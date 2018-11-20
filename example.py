@@ -4,7 +4,17 @@ from torch.utils import data
 
 from trainRack import Rack
 
-model = nn.GRU(10, 20, 1)
+class ExModel(nn.Module):
+    def __init__(self,hs,ins,nc):
+        super(ExModel,self).__init__()
+        self.rec = nn.GRU(input_size=ins,hidden_size=hs,batch_first=True)
+        self.cla = nn.Linear(hs,nc)
+
+    def forward(self, input, hx=None):
+        out, hn = self.rec(input)
+        return nn.Softmax(dim=-1)(self.cla(hn[-1,:,:]))
+
+model = ExModel(20, 10, 2)
 
 
 class RandDataset(data.Dataset):
@@ -12,10 +22,11 @@ class RandDataset(data.Dataset):
         super(RandDataset, self).__init__()
         self.nsamp = nsamp
         self.nfeat = nfeat
-        self.data = torch.randn(nsamp, seqlen, nfeat + nclass)
+        self.data = torch.randn(nsamp, seqlen, nfeat)
+        self.target = torch.randint(nclass,(nsamp,))
 
     def __getitem__(self, item):
-        return self.data[item, :, :self.nfeat], self.data[item, :, self.nfeat:]
+        return self.data[item, :, :], self.target[item]
 
     def __len__(self):
         return self.nsamp
