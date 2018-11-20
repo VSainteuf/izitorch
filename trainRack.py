@@ -1,9 +1,11 @@
 import torch  # TODO minimal import
 from torch.utils import data
+import torchnet as tnt
 import numpy as np
 
 import argparse
 
+import time
 import json
 import os
 
@@ -71,7 +73,7 @@ class Rack:
     def set_dataset(self, dataset):
         self.dataset = dataset
 
-    ####### Methods for execution
+    ####### Methods for preparation
 
     def prepare_output(self):
         if not os.path.exists(self.args.res_dir):
@@ -81,6 +83,8 @@ class Rack:
 
         with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
             json.dump(self.to_dict(), fp, indent=4)
+
+        self.stats = {}
 
     def get_loaders(self):
 
@@ -97,16 +101,71 @@ class Rack:
                                       num_workers=self.args.num_workers)
         return train_loader, test_loader
 
+    ####### Methods for execution
+
     def launch(self):
+        torch.manual_seed(1)
+
         self.prepare_output()
 
         self.train_loader, self.test_loader = self.get_loaders()
 
-        self.train()
+        self.args.total_step = len(self.train_loader)
 
-    def train(self):
-        print("training like a mofo")
-        pass
+        self.model = self.model.to(self.device)
+
+        for epoch in range(self.args.epochs):
+
+            metrics = self.train_epoch()
+            self.verbose_epoch(epoch, metrics)
+
+    def verbose_epoch(self, epoch, metrics):
+        if epoch % self.args.test_step == 0:
+            tacc, tloss, tIoU = self.test()
+            self.stats[epoch + 1] = {**metrics, 'test_accuracy': tacc,
+                                     'test_loss': tloss, 'test_IoU': tIoU}
+
+        else:
+            self.stats[epoch + 1] = metrics
+
+        print('Writing checkpoint . . .')
+        with open(os.path.join(self.args.res_dir, 'trainlog.json'), 'w') as outfile:
+            json.dump(self.stats, outfile)
+        torch.save(
+            {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
+            os.path.join(self.args.res_dir, 'model.pth.tar'.format(epoch)))
+
+    def train_epoch(self):
+        self.model.train()
+
+        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
+        loss_meter = tnt.meter.AverageValueMeter()
+
+        ta = time.time()
+        for i, (x, y) in enumerate(self.train_loader):
+
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            outputs = self.model(x)
+            loss = self.criterion(outputs, y.long())
+
+            acc_meter.add(outputs.detach(), y)
+            loss_meter.add(loss.item())
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+            if (i + 1) % 100 == 0:
+                tb = time.time()
+                elapsed = tb - ta
+                print('Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                      .format(i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
+                              elapsed))
+                ta = tb
+
+        return {'loss': loss_meter.value()[0], 'accuracy': acc_meter.value()[0]}
 
     def test(self):
         print("testing like a mofo")
