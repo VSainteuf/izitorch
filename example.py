@@ -18,7 +18,7 @@ model = ExModel(20, 10, 2)
 
 
 class RandDataset(data.Dataset):
-    def __init__(self, nsamp=10000, seqlen=5, nfeat=10, nclass=2):
+    def __init__(self, nsamp=100000, seqlen=5, nfeat=10, nclass=2):
         super(RandDataset, self).__init__()
         self.nsamp = nsamp
         self.nfeat = nfeat
@@ -26,13 +26,13 @@ class RandDataset(data.Dataset):
         self.target = torch.randint(nclass,(nsamp,))
 
     def __getitem__(self, item):
-        return self.data[item, :, :], self.target[item]
+        return self.data[item, :, :], self.target[item].long()
 
     def __len__(self):
         return self.nsamp
 
 
-arg_dict = {'extra_feature': {'default': 2, 'type': int}}
+arg_dict = {'num_classes': {'default': 2, 'type': int}}
 optimizer_class = torch.optim.Adam
 criterion = nn.CrossEntropyLoss()
 
