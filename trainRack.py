@@ -3,8 +3,9 @@ from torch.utils import data
 import torchnet as tnt
 import numpy as np
 
-import argparse
+from metrics import mIou
 
+import argparse
 import time
 import json
 import os
@@ -31,6 +32,7 @@ class Rack:
         parser.add_argument('--dataset', default='/home/vsfg/data')
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         parser.add_argument('--resume', default='')
+
 
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
@@ -116,14 +118,13 @@ class Rack:
 
         for epoch in range(self.args.epochs):
 
-            metrics = self.train_epoch()
-            self.verbose_epoch(epoch, metrics)
+            train_metrics = self.train_epoch()
+            self.monitor_epoch(epoch, train_metrics)
 
-    def verbose_epoch(self, epoch, metrics):
+    def monitor_epoch(self, epoch, metrics):
         if epoch % self.args.test_step == 0:
-            tacc, tloss, tIoU = self.test()
-            self.stats[epoch + 1] = {**metrics, 'test_accuracy': tacc,
-                                     'test_loss': tloss, 'test_IoU': tIoU}
+            test_metrics = self.test()
+            self.stats[epoch + 1] = {**metrics, **test_metrics}
 
         else:
             self.stats[epoch + 1] = metrics
@@ -168,5 +169,38 @@ class Rack:
         return {'loss': loss_meter.value()[0], 'accuracy': acc_meter.value()[0]}
 
     def test(self):
-        print("testing like a mofo")
-        pass
+
+        #TODO generalise method and just give a list of metrics as rack parameter
+        print('Testing model . . .')
+        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
+        loss_meter = tnt.meter.AverageValueMeter()
+        iou_meter = tnt.meter.AverageValueMeter()
+
+        self.model.eval()
+        for (x, y) in self.test_loader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+
+            with torch.no_grad():
+                prediction = self.model(x)
+                loss = self.criterion(prediction, y)
+
+            acc_meter.add(prediction, y)
+            loss_meter.add(loss.item())
+
+            iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+
+            iou_meter.add(iou)
+
+        acc = acc_meter.value()[0]
+        loss = loss_meter.value()[0]
+        miou = iou_meter.value()[0]
+
+        test_metrics = {'test_accuracy':acc,'test_loss':loss,'test_IoU':miou}
+
+        print('Test accuracy : {:.3f}'.format(acc))
+        print('Test loss : {:.4f}'.format(loss))
+        print('Test IoU : {:.4f}'.format(miou))
+
+        return test_metrics
