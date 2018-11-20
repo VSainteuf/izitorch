@@ -1,5 +1,6 @@
-import torch #TODO minimal import
+import torch  # TODO minimal import
 from torch.utils import data
+import numpy as np
 
 import argparse
 
@@ -29,8 +30,6 @@ class Rack:
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         parser.add_argument('--resume', default='')
 
-        parser.add_argument('--num_classes', default=44, type=int)
-
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
@@ -56,7 +55,7 @@ class Rack:
 
     def set_device(self, device_name=None):
         try:
-            self.device(torch.device(device_name))
+            self.device = torch.device(device_name)
         except TypeError:
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -64,7 +63,7 @@ class Rack:
         self.model = model
 
     def set_optimizer(self, optimizer_class):
-        self.optimizer = optimizer_class(self.model.parameters())
+        self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
 
     def set_criterion(self, criterion):
         self.criterion = criterion
@@ -106,7 +105,9 @@ class Rack:
         self.train()
 
     def train(self):
+        print("training like a mofo")
         pass
 
     def test(self):
+        print("testing like a mofo")
         pass
