@@ -3,7 +3,7 @@ from torch.utils import data
 import torchnet as tnt
 import numpy as np
 
-from metrics import mIou
+from izitorch.metrics import mIou
 
 import argparse
 import time
