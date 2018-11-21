@@ -107,7 +107,7 @@ class Rack:
         Args:
             dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
         """
-        if isinstance(dataset,torch.utils.data.Datasets):
+        if isinstance(dataset,torch.utils.data.Dataset):
             self.dataset = dataset
         elif isinstance(dataset,list):
             self.train_dataset , self.test_dataset = dataset
