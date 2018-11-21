@@ -208,12 +208,14 @@ class Rack:
         else:
             self.stats[epoch + 1] = metrics
 
-        print('Writing checkpoint . . .')
+        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch,self.args.epoch))
+
         with open(os.path.join(self.args.res_dir, 'trainlog.json'), 'w') as outfile:
             json.dump(self.stats, outfile)
         torch.save(
             {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
             os.path.join(self.args.res_dir, 'model.pth.tar'.format(epoch)))
+
 
     def train_epoch(self):
         """
