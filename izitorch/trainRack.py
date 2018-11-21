@@ -14,6 +14,8 @@ import os
 class Rack:
 
     def __init__(self):
+        torch.manual_seed(1)
+
         self.set_basic_menu()
         self.set_device()
         self.dataset = None
@@ -134,19 +136,35 @@ class Rack:
         Splits the dataset in train and test if only one was provided,
          and returns the two corresponding torch.utils.DataLoader instances
         """
+        print('Splitting dataset')
+
+        ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
+        ntest = len(self.dataset) - ntrain
+        print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
+
         if self.dataset is not None:
-            print('Splitting dataset')
-            ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
-            ntest = len(self.dataset) - ntrain
 
             self.train_dataset, self.test_dataset = data.random_split(self.dataset, [ntrain, ntest])
 
-        print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset),len(self.test_dataset)))
 
-        train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                       num_workers=self.args.num_workers)
-        test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                      num_workers=self.args.num_workers)
+            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
+                                           num_workers=self.args.num_workers)
+            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
+                                          num_workers=self.args.num_workers)
+
+        else:
+            indices = range(len(self.train_dataset))
+            if self.args.shuffle:
+                np.random.shuffle(indices)
+
+            train_sampler = data.sampler.SubsetRandomSampler(indices[:ntrain])
+            test_sampler = data.sampler.SubsetRandomSampler(indices[ntrain:])
+
+
+            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, sampler=train_sampler,
+                                           num_workers=self.args.num_workers)
+            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, sampler=test_sampler,
+                                          num_workers=self.args.num_workers)
         return train_loader, test_loader
 
     ####### Methods for execution
@@ -156,7 +174,6 @@ class Rack:
         MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
         the model is applied to the test dataset every args.test_step epochs
         """
-        torch.manual_seed(1)
 
         self.prepare_output()
 
