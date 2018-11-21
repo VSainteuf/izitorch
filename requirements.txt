@@ -1,3 +1,5 @@
 torch
 torchnet
 numpy
+tqdm
+scipy
