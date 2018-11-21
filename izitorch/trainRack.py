@@ -143,7 +143,7 @@ class Rack:
 
             ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
             ntest = len(self.dataset) - ntrain
-            print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
+            print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
             self.train_dataset, self.test_dataset = data.random_split(self.dataset, [ntrain, ntest])
 
 
@@ -157,8 +157,9 @@ class Rack:
 
             ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
             ntest = len(self.train_dataset) - ntrain
-            print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
-            indices = range(len(self.train_dataset))
+            print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
+
+            indices = list(range(len(self.train_dataset)))
             if self.args.shuffle:
                 np.random.shuffle(indices)
 
