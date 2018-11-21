@@ -136,14 +136,14 @@ class Rack:
         Splits the dataset in train and test if only one was provided,
          and returns the two corresponding torch.utils.DataLoader instances
         """
-        print('Splitting dataset')
 
-        ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
-        ntest = len(self.dataset) - ntrain
-        print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
 
         if self.dataset is not None:
+            print('Splitting dataset')
 
+            ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
+            ntest = len(self.dataset) - ntrain
+            print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
             self.train_dataset, self.test_dataset = data.random_split(self.dataset, [ntrain, ntest])
 
 
@@ -153,6 +153,11 @@ class Rack:
                                           num_workers=self.args.num_workers)
 
         else:
+            print('Splitting dataset')
+
+            ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
+            ntest = len(self.train_dataset) - ntrain
+            print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset), len(self.test_dataset)))
             indices = range(len(self.train_dataset))
             if self.args.shuffle:
                 np.random.shuffle(indices)
