@@ -33,6 +33,9 @@ def random_rotation(a,angle=180,nrange=100):
 
     return ndimage.rotate(a,angle=alpha,axes=(1,2),reshape=False)
 
+def rotate(angle):
+    return lambda x: random_rotation(x,angle=angle)
+
 def add_jitter(P):
     sigma, clip = 0.01, 0.05  # https://github.com/charlesq34/pointnet/blob/master/provider.py#L74
     P = P + np.clip(sigma * np.random.randn(*P.shape), -1 * clip, clip).astype(np.float32)
