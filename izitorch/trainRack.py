@@ -16,6 +16,7 @@ class Rack:
     def __init__(self):
         self.set_basic_menu()
         self.set_device()
+        self.dataset = None
 
     def to_dict(self):
         d = vars(self.args).copy()
@@ -97,13 +98,19 @@ class Rack:
 
     def set_dataset(self, dataset):
         """
-        Attaches a dataset to the training rack.
+        Attaches a dataset to the training rack. If only one dataset is provided, it will be split in train and test,
+        but a list of two datasets can also be provided (allows to have different image transformation on train and test).
         For generality's sake the dataset should return items in the form (input,target).
         If the network uses more exotic input, this needs to be dealt with in the forward method of its definition
         Args:
-            dataset: instance of torch.utils.dataset
+            dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
         """
-        self.dataset = dataset
+        if isinstance(dataset,torch.utils.data.Datasets):
+            self.dataset = dataset
+        elif isinstance(dataset,list):
+            self.train_dataset , self.test_dataset = dataset
+        else:
+            raise ValueError
 
     ####### Methods for preparation
 
@@ -124,18 +131,21 @@ class Rack:
 
     def get_loaders(self):
         """
-        Splits the dataset in train and test and returns the two corresponding torch.utils.DataLoader instances
+        Splits the dataset in train and test if only one was provided,
+         and returns the two corresponding torch.utils.DataLoader instances
         """
-        print('Splitting dataset')
-        ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
-        ntest = len(self.dataset) - ntrain
+        if self.dataset is not None:
+            print('Splitting dataset')
+            ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
+            ntest = len(self.dataset) - ntrain
 
-        dtrain, dtest = data.random_split(self.dataset, [ntrain, ntest])
-        print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
+            self.train_dataset, self.test_dataset = data.random_split(self.dataset, [ntrain, ntest])
 
-        train_loader = data.DataLoader(dtrain, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
+        print('Train: {} samples, Test : {} samples'.format(len(self.train_dataset),len(self.test_dataset)))
+
+        train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
                                        num_workers=self.args.num_workers)
-        test_loader = data.DataLoader(dtest, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
+        test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
                                       num_workers=self.args.num_workers)
         return train_loader, test_loader
 
