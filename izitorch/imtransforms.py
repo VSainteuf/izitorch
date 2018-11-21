@@ -2,7 +2,7 @@
 Set of simple image transformations, similar to what can be found in torchvision but that work with mutlispectral data
 """
 
-import torch
+from torch import tensor
 import numpy as np
 from scipy import ndimage
 
@@ -15,7 +15,7 @@ def to_array(t):
 
 
 def to_tensor(a):
-    return torch.tensor(a)
+    return tensor(a)
 
 
 def horizontal_flip(a):
@@ -31,4 +31,4 @@ def random_rotation(a,angle=180,nrange=100):
         angle = [i for i in range(-angle,angle,(2*angle)//nrange)]
     alpha = np.random.choice(angle)
 
-    return ndimage.rotate(a,angle=a,axes=(1,2),reshape=False)
+    return ndimage.rotate(a,angle=alpha,axes=(1,2),reshape=False)
