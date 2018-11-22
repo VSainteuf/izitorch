@@ -148,9 +148,9 @@ class Rack:
 
 
             train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                           num_workers=self.args.num_workers,pin_memory=True)
+                                           num_workers=self.args.num_workers)
             test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                          num_workers=self.args.num_workers,pin_memory=True)
+                                          num_workers=self.args.num_workers)
 
         else:
             print('Splitting dataset')
