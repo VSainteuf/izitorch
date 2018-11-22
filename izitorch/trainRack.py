@@ -208,7 +208,7 @@ class Rack:
         else:
             self.stats[epoch + 1] = metrics
 
-        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch,self.args.epochs))
+        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch+1,self.args.epochs))
 
         with open(os.path.join(self.args.res_dir, 'trainlog.json'), 'w') as outfile:
             json.dump(self.stats, outfile)
