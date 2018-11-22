@@ -230,27 +230,27 @@ class Rack:
         ta = time.time()
         t4 = time.time()
         for i, (x, y) in enumerate(self.train_loader):
-            t0 = time.time()
-            print('Loading {}'.format(t0-t4))
+            # t0 = time.time()
+            # print('Loading {}'.format(t0-t4))
             x = x.to(self.device)
             y = y.to(self.device)
-            t1 = time.time()
-            print('ToDevice {}'.format(t1-t0))
+            # t1 = time.time()
+            # print('ToDevice {}'.format(t1-t0))
 
             outputs = self.model(x)
             loss = self.criterion(outputs, y.long())
-            t2 = time.time()
-            print('Forward {}'.format(t2-t1))
+            # t2 = time.time()
+            # print('Forward {}'.format(t2-t1))
 
             acc_meter.add(outputs.detach(), y)
             loss_meter.add(loss.item())
-            t3 = time.time()
+            # t3 = time.time()
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            t4 = time.time()
-            print('Backward {}'.format(t4-t2))
+            # t4 = time.time()
+            # print('Backward {}'.format(t4-t2))
 
 
             # print('batch_time : {}'.format(t1-t0))
