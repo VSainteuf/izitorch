@@ -190,8 +190,14 @@ class Rack:
         self.model = self.model.to(self.device)
 
         for epoch in range(self.args.epochs):
+            t0 = time.time()
+
             train_metrics = self.train_epoch()
             self.checkpoint_epoch(epoch, train_metrics)
+
+            t1 = time.time()
+
+            print('Epoch duration : {}'.format(t1-t0))
 
     def checkpoint_epoch(self, epoch, metrics):
         """
@@ -232,7 +238,12 @@ class Rack:
         for i, (x, y) in enumerate(self.train_loader):
             # t0 = time.time()
             # print('Loading {}'.format(t0-t4))
-            x = x.to(self.device)
+            try:
+                x = x.to(self.device)
+            except AttributeError: #dirty fix for extra data
+                for i,input in enumerate(x):
+                    x[i] = input.to(self.device)
+
             y = y.to(self.device)
             # t1 = time.time()
             # print('ToDevice {}'.format(t1-t0))
