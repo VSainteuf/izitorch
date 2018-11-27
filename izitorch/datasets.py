@@ -35,10 +35,16 @@ class Sequential_Dataset_from_h5folder(data.Dataset):
                     image_series[i, :, :, :] = (self.im_transforms[i])(image_series[i, :, :, :])
 
             if self.extra_feature is not None:
-                extra = torch.from_numpy(np.array(h5[self.extra_feature][local_index], dtype=int)).float()
-                if self.extra_transform is not None:
-                    m, s = self.extra_transform
-                    extra = (extra - m) / s
+                if self.extra_feature == 'initial_dimensions':
+                    extra = torch.from_numpy(np.array(h5[self.extra_feature][local_index], dtype=int)).float()
+                    if self.extra_transform is not None:
+                        m, s = self.extra_transform
+                        extra = (extra - m) / s
+                if self.extra_feature == 'dates':
+                    extra = torch.from_numpy(np.array(h5[self.extra_feature][:], dtype=int)).float()
+                    if self.extra_transform is not None:
+                        extra = self.extra_transform(extra)
+
                 data = (image_series, extra)
             else:
                 data = image_series
