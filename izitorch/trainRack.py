@@ -43,7 +43,8 @@ class Rack:
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
         parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
-
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
+        
         parser.add_argument('--epochs', default=1000, type=int)
         parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
         parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
@@ -136,7 +137,10 @@ class Rack:
         Splits the dataset in train and test if only one was provided,
          and returns the two corresponding torch.utils.DataLoader instances
         """
-
+        if self.args.pin_memory == 1:
+            pm = True
+        else:
+            pm = False
 
         if self.dataset is not None:
             print('Splitting dataset')
@@ -148,9 +152,9 @@ class Rack:
 
 
             train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                           num_workers=self.args.num_workers)
+                                           num_workers=self.args.num_workers, pin_memory=pm)
             test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                          num_workers=self.args.num_workers)
+                                          num_workers=self.args.num_workers, pin_memory=pm)
 
         else:
             print('Splitting dataset')
@@ -168,9 +172,9 @@ class Rack:
 
 
             train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, sampler=train_sampler,
-                                           num_workers=self.args.num_workers)
+                                           num_workers=self.args.num_workers, pin_memory=pm)
             test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, sampler=test_sampler,
-                                          num_workers=self.args.num_workers)
+                                          num_workers=self.args.num_workers, pin_memory=pm)
         return train_loader, test_loader
 
     ####### Methods for execution
