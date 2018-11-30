@@ -1,9 +1,12 @@
 import torch
 from torch.utils import data
+from torch.optim.lr_scheduler import MultiStepLR
 import torchnet as tnt
 import numpy as np
+from sklearn import model_selection
 
 from izitorch.metrics import mIou
+from izitorch.utils import weight_init
 
 import argparse
 import time
@@ -43,9 +46,16 @@ class Rack:
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
         parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
+        parser.add_argument('--kfold', default=0, type=int,
+                            help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
 
         parser.add_argument('--epochs', default=1000, type=int)
         parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
+        parser.add_argument('--lr_decay', default=1, type=float,
+                            help='Multiplicative factor used on learning rate at lr_steps')
+        parser.add_argument('--lr_steps', default='',
+                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
         parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
 
         self.parser = parser
@@ -90,6 +100,11 @@ class Rack:
         """
         self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
 
+        if self.args.lr_decay != 1:
+            print('Preparing MutliStepLR')
+            steps = list(map(int, self.args.lr_steps.split('+')))
+            self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
+
     def set_criterion(self, criterion):
         """
         Attaches a criterion instance to the training rack
@@ -107,10 +122,10 @@ class Rack:
         Args:
             dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
         """
-        if isinstance(dataset,torch.utils.data.Dataset):
+        if isinstance(dataset, torch.utils.data.Dataset):
             self.dataset = dataset
-        elif isinstance(dataset,list):
-            self.train_dataset , self.test_dataset = dataset
+        elif isinstance(dataset, list):
+            self.train_dataset, self.test_dataset = dataset
         else:
             raise ValueError
 
@@ -119,59 +134,75 @@ class Rack:
     def prepare_output(self):
         """
         Creates output directory and writes the configuration file in it.
-        Then initializes the dictionnary that keep tracks of the metrics.
+
         """
         if not os.path.exists(self.args.res_dir):
             os.makedirs(self.args.res_dir)
         else:
             print('WARNING: Output directory  already exists')
 
+        if self.args.kfold != 0:
+            for i in range(self.args.kfold):
+                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
+
         with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
             json.dump(self.to_dict(), fp, indent=4)
 
-        self.stats = {}
-
     def get_loaders(self):
         """
-        Splits the dataset in train and test if only one was provided,
-         and returns the two corresponding torch.utils.DataLoader instances
+        Splits the dataset in train and test and returns a list of train and test dataloader pairs.
+        Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
+        there is no k-fold
         """
-
+        if self.args.pin_memory == 1:
+            pm = True
+        else:
+            pm = False
 
         if self.dataset is not None:
-            print('Splitting dataset')
+            self.train_dataset = self.dataset
+            self.test_dataset = self.dataset
 
-            ntrain = int(np.floor(self.args.train_ratio * len(self.dataset)))
-            ntest = len(self.dataset) - ntrain
-            print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
-            self.train_dataset, self.test_dataset = data.random_split(self.dataset, [ntrain, ntest])
+        print('Splitting dataset')
 
+        indices = list(range(len(self.train_dataset)))
+        if self.args.shuffle:
+            np.random.seed(1)  # TODO random seed as an option
+            np.random.shuffle(indices)
 
-            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                           num_workers=self.args.num_workers)
-            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=self.args.shuffle,
-                                          num_workers=self.args.num_workers)
+        if self.args.kfold != 0:
+            kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
+            indices_seq = list(kf.split(list(range(len(indices)))))
+            print('Preparing {}-fold cross validation'.format(self.args.kfold))
+            print('Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
 
         else:
-            print('Splitting dataset')
-
             ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
             ntest = len(self.train_dataset) - ntrain
             print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
+            indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
 
-            indices = list(range(len(self.train_dataset)))
-            if self.args.shuffle:
-                np.random.shuffle(indices)
+        loader_seq = []
 
-            train_sampler = data.sampler.SubsetRandomSampler(indices[:ntrain])
-            test_sampler = data.sampler.SubsetRandomSampler(indices[ntrain:])
+        for train, test in indices_seq:
+            train_indices = [indices[i] for i in train]
+            test_indices = [indices[i] for i in test]
 
+            train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+            test_sampler = data.sampler.SubsetRandomSampler(test_indices)
 
-            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size, sampler=train_sampler,
-                                           num_workers=self.args.num_workers)
-            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size, sampler=test_sampler,
-                                          num_workers=self.args.num_workers)
-        return train_loader, test_loader
+            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                                           sampler=train_sampler,
+                                           num_workers=self.args.num_workers, pin_memory=pm)
+            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                                          sampler=test_sampler,
+                                          num_workers=self.args.num_workers, pin_memory=pm)
+            loader_seq.append((train_loader, test_loader))
+
+        return loader_seq
+
+    def initialise_weights(self):
+        self.model.apply(weight_init)
 
     ####### Methods for execution
 
@@ -183,29 +214,44 @@ class Rack:
 
         self.prepare_output()
 
-        self.train_loader, self.test_loader = self.get_loaders()
+        loader_seq = self.get_loaders()
+        nfold = len(loader_seq)
 
-        self.args.total_step = len(self.train_loader)
+        for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
+            if nfold == 1:
+                print('Starting single training ')
+                subdir = ''
+            else:
+                print('Starting training with {}-fold cross validation'.format(nfold))
+                subdir = 'FOLD_{}'.format(i + 1)
 
-        self.model = self.model.to(self.device)
+            self.args.total_step = len(self.train_loader)
 
-        for epoch in range(self.args.epochs):
-            t0 = time.time()
+            self.initialise_weights()
 
-            train_metrics = self.train_epoch()
-            self.checkpoint_epoch(epoch, train_metrics)
+            self.model = self.model.to(self.device)
 
-            t1 = time.time()
+            self.stats = {}
 
-            print('Epoch duration : {}'.format(t1-t0))
+            print('FOLD #{}'.format(i + 1))
+            for epoch in range(self.args.epochs):
+                t0 = time.time()
 
-    def checkpoint_epoch(self, epoch, metrics):
+                train_metrics = self.train_epoch()
+                self.checkpoint_epoch(epoch, train_metrics, subdir=subdir)
+
+                t1 = time.time()
+
+                print('Epoch duration : {}'.format(t1 - t0))
+
+    def checkpoint_epoch(self, epoch, metrics, subdir=''):
         """
         Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
         If on a test epoch the test metrics will also be computed and writen in the trainlog
         Args:
             epoch (int): number of the epoch
             metrics (dict): training metrics to be written
+            subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
         if epoch % self.args.test_step == 0:
             test_metrics = self.test()
@@ -214,14 +260,13 @@ class Rack:
         else:
             self.stats[epoch + 1] = metrics
 
-        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch+1,self.args.epochs))
+        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
 
-        with open(os.path.join(self.args.res_dir, 'trainlog.json'), 'w') as outfile:
+        with open(os.path.join(self.args.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
             json.dump(self.stats, outfile)
         torch.save(
             {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
-            os.path.join(self.args.res_dir, 'model.pth.tar'.format(epoch)))
-
+            os.path.join(self.args.res_dir, subdir, 'model.pth.tar'.format(epoch)))
 
     def train_epoch(self):
         """
@@ -236,13 +281,14 @@ class Rack:
         ta = time.time()
         t4 = time.time()
         for i, (x, y) in enumerate(self.train_loader):
+
             # t0 = time.time()
             # print('Loading {}'.format(t0-t4))
             try:
                 x = x.to(self.device)
-            except AttributeError: #dirty fix for extra data
-                for i,input in enumerate(x):
-                    x[i] = input.to(self.device)
+            except AttributeError:  # dirty fix for extra data
+                for j, input in enumerate(x):
+                    x[j] = input.to(self.device)
 
             y = y.to(self.device)
             # t1 = time.time()
@@ -260,9 +306,11 @@ class Rack:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            if self.args.lr_decay != 1:
+                self.scheduler.step()
+
             # t4 = time.time()
             # print('Backward {}'.format(t4-t2))
-
 
             # print('batch_time : {}'.format(t1-t0))
             if (i + 1) % 100 == 0:

@@ -80,8 +80,8 @@ class Sequential_Dataset_from_h5folder(data.Dataset):
 
             m.append(np.mean(x.numpy(), axis=(0, 3, 4)))
             s.append(np.std(x.numpy(), axis=(0, 3, 4)))
-        m = np.mean(m,axis=0)
-        s = np.mean(s,axis=0)
+        m = np.mean(m, axis=0)
+        s = np.mean(s, axis=0)
         xm = np.mean(xm, axis=0)
         xs = np.mean(xs, axis=0)
         stats = {'images': (m, s), 'extra': (xm, xs)}
