@@ -1,5 +1,6 @@
 import torch
 from torch.utils import data
+from torch.optim.lr_scheduler import MultiStepLR
 import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
@@ -51,6 +52,10 @@ class Rack:
 
         parser.add_argument('--epochs', default=1000, type=int)
         parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
+        parser.add_argument('--lr_decay', default=1, type=float,
+                            help='Multiplicative factor used on learning rate at lr_steps')
+        parser.add_argument('--lr_steps', default='',
+                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
         parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
 
         self.parser = parser
@@ -95,6 +100,11 @@ class Rack:
         """
         self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
 
+        if self.args.lr_decay != 1:
+            print('Preparing MutliStepLR')
+            steps = list(map(int, self.args.lr_steps.split('+')))
+            self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
+
     def set_criterion(self, criterion):
         """
         Attaches a criterion instance to the training rack
@@ -133,7 +143,7 @@ class Rack:
 
         if self.args.kfold != 0:
             for i in range(self.args.kfold):
-                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)),exist_ok=True)
+                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
 
         with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
             json.dump(self.to_dict(), fp, indent=4)
@@ -157,6 +167,7 @@ class Rack:
 
         indices = list(range(len(self.train_dataset)))
         if self.args.shuffle:
+            np.random.seed(1)  # TODO random seed as an option
             np.random.shuffle(indices)
 
         if self.args.kfold != 0:
@@ -216,13 +227,13 @@ class Rack:
 
             self.args.total_step = len(self.train_loader)
 
-            self.model = self.model.to(self.device)
-
             self.initialise_weights()
+
+            self.model = self.model.to(self.device)
 
             self.stats = {}
 
-            print('FOLD #{}'.format(i+1))
+            print('FOLD #{}'.format(i + 1))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
@@ -270,6 +281,7 @@ class Rack:
         ta = time.time()
         t4 = time.time()
         for i, (x, y) in enumerate(self.train_loader):
+
             # t0 = time.time()
             # print('Loading {}'.format(t0-t4))
             try:
@@ -294,6 +306,9 @@ class Rack:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+            if self.args.lr_decay != 1:
+                self.scheduler.step()
+
             # t4 = time.time()
             # print('Backward {}'.format(t4-t2))
 
