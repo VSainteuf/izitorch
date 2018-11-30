@@ -133,7 +133,7 @@ class Rack:
 
         if self.args.kfold != 0:
             for i in range(self.args.kfold):
-                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i)))
+                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)),exist_ok=True)
 
         with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
             json.dump(self.to_dict(), fp, indent=4)
@@ -206,13 +206,13 @@ class Rack:
         loader_seq = self.get_loaders()
         nfold = len(loader_seq)
 
-        for self.train_loader, self.test_loader in loader_seq:
+        for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
             if nfold == 1:
                 print('Starting single training ')
                 subdir = ''
             else:
                 print('Starting training with {}-fold cross validation'.format(nfold))
-                subdir = 'FOLD_{}'.format(nfold)
+                subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
 
@@ -222,6 +222,7 @@ class Rack:
 
             self.stats = {}
 
+            print('FOLD #{}'.format(i))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
