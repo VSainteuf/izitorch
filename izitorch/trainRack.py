@@ -222,7 +222,7 @@ class Rack:
 
             self.stats = {}
 
-            print('FOLD #{}'.format(i))
+            print('FOLD #{}'.format(i+1))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
