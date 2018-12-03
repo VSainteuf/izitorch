@@ -173,7 +173,8 @@ class Rack:
         if self.args.kfold != 0:
             kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
             indices_seq = list(kf.split(list(range(len(indices)))))
-            print('[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
+            print(
+                '[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
             print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
 
         else:
@@ -253,7 +254,7 @@ class Rack:
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
-        if epoch % self.args.test_step == 0:
+        if epoch % self.args.test_step == 0 or epoch == self.args.epochs:
             test_metrics = self.test()
             self.stats[epoch + 1] = {**metrics, **test_metrics}
 
