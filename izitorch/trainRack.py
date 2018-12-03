@@ -11,6 +11,7 @@ from izitorch.utils import weight_init
 import argparse
 import time
 import json
+import pickle as pkl
 import os
 
 
@@ -188,6 +189,8 @@ class Rack:
             ntest = len(self.train_dataset) - ntrain
             print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
             indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
+
+        pkl.dump(indices_seq,open(os.path.join(self.args.res_dir,'traintest_indices.pkl'),'wb'))
 
         loader_seq = []
 
