@@ -101,7 +101,7 @@ class Rack:
         self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
 
         if self.args.lr_decay != 1:
-            print('Preparing MutliStepLR')
+            print('[TRAINING CONFIGURATION] Preparing MutliStepLR')
             steps = list(map(int, self.args.lr_steps.split('+')))
             self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
 
@@ -139,7 +139,7 @@ class Rack:
         if not os.path.exists(self.args.res_dir):
             os.makedirs(self.args.res_dir)
         else:
-            print('WARNING: Output directory  already exists')
+            print('[WARNING] Output directory  already exists')
 
         if self.args.kfold != 0:
             for i in range(self.args.kfold):
@@ -163,7 +163,7 @@ class Rack:
             self.train_dataset = self.dataset
             self.test_dataset = self.dataset
 
-        print('Splitting dataset')
+        print('[DATASET] Splitting dataset')
 
         indices = list(range(len(self.train_dataset)))
         if self.args.shuffle:
@@ -173,13 +173,13 @@ class Rack:
         if self.args.kfold != 0:
             kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
             indices_seq = list(kf.split(list(range(len(indices)))))
-            print('Preparing {}-fold cross validation'.format(self.args.kfold))
-            print('Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
+            print('[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
+            print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
 
         else:
             ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
             ntest = len(self.train_dataset) - ntrain
-            print('Train: {} samples, Test : {} samples'.format(ntrain, ntest))
+            print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
             indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
 
         loader_seq = []
@@ -219,10 +219,10 @@ class Rack:
 
         for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
             if nfold == 1:
-                print('Starting single training ')
+                print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('Starting training with {}-fold cross validation'.format(nfold))
+                print('[TRAINING CONFIGURATION] Starting training with {}-fold cross validation'.format(nfold))
                 subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
@@ -233,7 +233,7 @@ class Rack:
 
             self.stats = {}
 
-            print('FOLD #{}'.format(i + 1))
+            print('[PROGRESS] FOLD #{}'.format(i + 1))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
@@ -242,7 +242,7 @@ class Rack:
 
                 t1 = time.time()
 
-                print('Epoch duration : {}'.format(t1 - t0))
+                print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
 
     def checkpoint_epoch(self, epoch, metrics, subdir=''):
         """
@@ -260,7 +260,7 @@ class Rack:
         else:
             self.stats[epoch + 1] = metrics
 
-        print('Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
+        print('[PROGRESS] Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
 
         with open(os.path.join(self.args.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
             json.dump(self.stats, outfile)
@@ -316,7 +316,7 @@ class Rack:
             if (i + 1) % 100 == 0:
                 tb = time.time()
                 elapsed = tb - ta
-                print('Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                print('[PROGRESS] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
                       .format(i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
                               elapsed))
                 ta = tb
@@ -355,8 +355,8 @@ class Rack:
 
         test_metrics = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-        print('Test accuracy : {:.3f}'.format(acc))
-        print('Test loss : {:.4f}'.format(loss))
-        print('Test IoU : {:.4f}'.format(miou))
+        print('[PERFORMANCE] Test accuracy : {:.3f}'.format(acc))
+        print('[PERFORMANCE] Test loss : {:.4f}'.format(loss))
+        print('[PERFORMANCE] Test IoU : {:.4f}'.format(miou))
 
         return test_metrics
