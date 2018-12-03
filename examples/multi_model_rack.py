@@ -62,7 +62,7 @@ conf3 = {
 }
 
 if __name__ == '__main__':
-    rack = trainRack.Rack_multimod()
+    rack = trainRack.Rack()
 
     rack.add_arguments(arg_dict)
     rack.parse_args()
