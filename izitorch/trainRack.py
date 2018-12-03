@@ -374,9 +374,9 @@ class Rack_multimod:
 
     def to_dict(self):
         d = vars(self.args).copy()
-        d['model'] = str(self.model)  ##TODO
-        d['criterion'] = str(self.criterion)
-        d['optimizer'] = str(self.optimizer)
+        d['models'] = str(self.models.keys())  ##TODO
+        d['criterions'] = str(self.criterions.keys())
+        d['optimizers'] = str(self.optimizers.keys())
         d['device'] = str(self.device)
         return d
 
@@ -489,7 +489,7 @@ class Rack_multimod:
 
         """
 
-        self.res_dirs = [os.path.join(self.args.res_dir, model_name) for model_name in self.models]
+        self.res_dirs = {model_name:os.path.join(self.args.res_dir, model_name) for model_name in self.models}
 
         for rd in self.res_dirs:
             if not os.path.exists(rd):
@@ -589,8 +589,8 @@ class Rack_multimod:
 
             self.stats = {}
 
-            for _, model in self.models:
-                self.model = self.model.to(self.device)
+            for model_name, model in self.models.items():
+                model = model.to(self.device)
 
                 self.stats[model_name] = {}
 
@@ -661,7 +661,7 @@ class Rack_multimod:
             # t1 = time.time()
             # print('ToDevice {}'.format(t1-t0))
 
-            for model_name, model in self.models:
+            for model_name, model in self.models.items():
                 outputs = model(x)
                 loss = self.criterions[model_name](outputs, y.long())
                 # t2 = time.time()
@@ -685,7 +685,7 @@ class Rack_multimod:
                     tb = time.time()
                     elapsed = tb - ta
                     print('[PROGRESS - MODEL {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
-                          .format(model_name, i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
+                          .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0], acc_meter[model_name].value()[0],
                                   elapsed))
                     ta = tb
 
