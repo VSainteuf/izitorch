@@ -92,37 +92,6 @@ class Rack:
         except TypeError:
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    def set_models(self, model_dict):
-        """
-        Attaches a model instance to the training rack
-        Args:
-            model(dict): dictionary of instances of torch.nn.Module (items in the form name:instance)
-        """
-        self.models = model_dict
-
-    def set_optimizers(self, optimizer_classes):
-        """
-        Attaches an optimizer instance to the training rack
-        Args:
-            optimizer_classes (dict): list of classes (NOT INSTANCE) of the optimizer to be used for each model
-        """
-        self.optimizers = {}
-
-        for model_name, opt in optimizer_classes.items():
-            self.optimizers[model_name] = opt(self.models[model_name].parameters(), lr=self.args.lr)
-
-        # if self.args.lr_decay != 1:   #TODO add lr decay support
-        #     print('[TRAINING CONFIGURATION] Preparing MutliStepLR')
-        #     steps = list(map(int, self.args.lr_steps.split('+')))
-        #     self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
-
-    def set_criterions(self, criterions):
-        """
-        Attaches a criterion instance to the training rack
-        Args:
-            criterion (dict): dict of instances of a torch.nn criterion, one for each model
-        """
-        self.criterions = criterions
 
     def add_model_configs(self, model_configs):
         """
@@ -160,7 +129,7 @@ class Rack:
 
     ####### Methods for preparation
 
-    def prepare_output(self):
+    def _prepare_output(self):
         """
         Creates output directory and writes the configuration file in it.
 
@@ -185,7 +154,7 @@ class Rack:
             with open(os.path.join(res_dir, 'conf.json'), 'w') as fp:
                 json.dump(repr[model_name], fp, indent=4)
 
-    def get_loaders(self):
+    def _get_loaders(self):
         """
         Splits the dataset in train and test and returns a list of train and test dataloader pairs.
         Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
@@ -239,7 +208,7 @@ class Rack:
 
         return loader_seq
 
-    def initialise_weights(self):
+    def _init_weights(self):
         for conf in self.model_configs.values():
             conf['model'].apply(weight_init)
 
@@ -251,9 +220,9 @@ class Rack:
         the model is applied to the test dataset every args.test_step epochs
         """
 
-        self.prepare_output()
+        self._prepare_output()
 
-        loader_seq = self.get_loaders()
+        loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
         for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
@@ -267,11 +236,11 @@ class Rack:
 
             self.args.total_step = len(self.train_loader)
 
-            self.initialise_weights()
+            self._init_weights()
 
-            self.init_trainlogs()
+            self._init_trainlogs()
 
-            self.models_to_device()
+            self._models_to_device()
 
             print('[PROGRESS] FOLD #{}'.format(i + 1))
             for epoch in range(self.args.epochs):
@@ -284,12 +253,12 @@ class Rack:
 
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
 
-    def init_trainlogs(self):
+    def _init_trainlogs(self):
         self.stats = {}
         for model_name, conf in self.model_configs.items():
             self.stats[model_name] = {}
 
-    def models_to_device(self):
+    def _models_to_device(self):
         for model_name, conf in self.model_configs.items():
             conf['model'] = conf['model'].to(self.device)
 
@@ -332,7 +301,7 @@ class Rack:
                 if (i + 1) % 100 == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[PROGRESS - MODEL {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                    print('[PROGRESS - {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
                                   acc_meter[model_name].value()[0],
                                   elapsed))
@@ -361,7 +330,7 @@ class Rack:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
 
-                print('[PROGRESS - MODEL {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
                                                                                              self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
@@ -415,9 +384,9 @@ class Rack:
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-            print('[PERFORMANCE - MODEL {}] Test accuracy : {:.3f}'.format(model_name,acc))
-            print('[PERFORMANCE - MODEL {}] Test loss : {:.4f}'.format(model_name,loss))
-            print('[PERFORMANCE - MODEL {}] Test IoU : {:.4f}'.format(model_name,miou))
+            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name,acc))
+            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name,loss))
+            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name,miou))
 
         return test_metrics
 
