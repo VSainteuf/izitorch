@@ -33,8 +33,16 @@ class RandDataset(data.Dataset):
 
 
 arg_dict = {'num_classes': {'default': 2, 'type': int}}
-optimizer_class = torch.optim.Adam
-criterion = nn.CrossEntropyLoss()
+
+m1 = ExModel(50, 10, 2)
+conf = {
+    'model1':{
+        'model': m1,
+        'criterion': nn.CrossEntropyLoss(),
+        'optimizer': torch.optim.Adam(m1.parameters())
+    }
+}
+
 
 if __name__ == '__main__':
     rack = trainRack.Rack()
@@ -42,9 +50,8 @@ if __name__ == '__main__':
     rack.add_arguments(arg_dict)
     rack.parse_args()
 
-    rack.set_model(model)
-    rack.set_optimizer(optimizer_class)
-    rack.set_criterion(criterion)
+    rack.add_model_configs(conf)
+
     rack.set_dataset(RandDataset())
 
     rack.launch()
