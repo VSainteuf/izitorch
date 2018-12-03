@@ -21,355 +21,6 @@ class Rack:
 
     def __init__(self):
         torch.manual_seed(1)
-
-        self.set_basic_menu()
-        self.set_device()
-        self.dataset = None
-
-    def to_dict(self):
-        d = vars(self.args).copy()
-        d['model'] = str(self.model)
-        d['criterion'] = str(self.criterion)
-        d['optimizer'] = str(self.optimizer)
-        d['device'] = str(self.device)
-        return d
-
-    ####### Methods for the options menu
-    def set_basic_menu(self):
-        """
-        Sets a basic argparse menu with the common arguments
-        """
-        parser = argparse.ArgumentParser()
-
-        parser.add_argument('--dataset', default='/home/vsfg/data')
-        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
-        parser.add_argument('--resume', default='')
-
-        parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
-        parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
-        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
-        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
-        parser.add_argument('--kfold', default=0, type=int,
-                            help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
-        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
-
-        parser.add_argument('--epochs', default=1000, type=int)
-        parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
-        parser.add_argument('--lr_decay', default=1, type=float,
-                            help='Multiplicative factor used on learning rate at lr_steps')
-        parser.add_argument('--lr_steps', default='',
-                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
-        parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
-
-        self.parser = parser
-
-    def add_arguments(self, arg_dict):
-        """
-        Add custom arguments to the argparse menu
-        Args:
-            arg_dict (dict): {arg_name:{'default':default_value,'type':arg_type}
-        """
-        for name, setting in arg_dict.items():
-            self.parser.add_argument('--{}'.format(name), default=setting['default'], type=setting['type'])
-
-    def parse_args(self):
-        self.args = self.parser.parse_args()
-
-    def print_args(self):
-        print(self.args)
-
-    ####### Methods for setting the specific elements of the training rack
-
-    def set_device(self, device_name=None):
-        """Sets the device used by torch for computation, will prioritize GPU by default but can be set manually"""
-        try:
-            self.device = torch.device(device_name)
-        except TypeError:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    def set_model(self, model):
-        """
-        Attaches a model instance to the training rack
-        Args:
-            model: instance of torch.nn.Module
-        """
-        self.model = model
-
-    def set_optimizer(self, optimizer_class):
-        """
-        Attaches an optimizer instance to the training rack
-        Args:
-            optimizer_class: class (NOT INSTANCE) of the optimizer to be used
-        """
-        self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
-
-        if self.args.lr_decay != 1:
-            print('[TRAINING CONFIGURATION] Preparing MutliStepLR')
-            steps = list(map(int, self.args.lr_steps.split('+')))
-            self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
-
-    def set_criterion(self, criterion):
-        """
-        Attaches a criterion instance to the training rack
-        Args:
-            criterion: instance of a torch.nn criterion
-        """
-        self.criterion = criterion
-
-    def set_dataset(self, dataset):
-        """
-        Attaches a dataset to the training rack. If only one dataset is provided, it will be split in train and test,
-        but a list of two datasets can also be provided (allows to have different image transformation on train and test).
-        For generality's sake the dataset should return items in the form (input,target).
-        If the network uses more exotic input, this needs to be dealt with in the forward method of its definition
-        Args:
-            dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
-        """
-        if isinstance(dataset, torch.utils.data.Dataset):
-            self.dataset = dataset
-        elif isinstance(dataset, list):
-            self.train_dataset, self.test_dataset = dataset
-        else:
-            raise ValueError
-
-    ####### Methods for preparation
-
-    def prepare_output(self):
-        """
-        Creates output directory and writes the configuration file in it.
-
-        """
-        if not os.path.exists(self.args.res_dir):
-            os.makedirs(self.args.res_dir)
-        else:
-            print('[WARNING] Output directory  already exists')
-
-        if self.args.kfold != 0:
-            for i in range(self.args.kfold):
-                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
-
-        with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
-            json.dump(self.to_dict(), fp, indent=4)
-
-    def get_loaders(self):
-        """
-        Splits the dataset in train and test and returns a list of train and test dataloader pairs.
-        Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
-        there is no k-fold
-        """
-        if self.args.pin_memory == 1:
-            pm = True
-        else:
-            pm = False
-
-        if self.dataset is not None:
-            self.train_dataset = self.dataset
-            self.test_dataset = self.dataset
-
-        print('[DATASET] Splitting dataset')
-
-        indices = list(range(len(self.train_dataset)))
-        if self.args.shuffle:
-            np.random.seed(1)  # TODO random seed as an option
-            np.random.shuffle(indices)
-
-        if self.args.kfold != 0:
-            kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
-            indices_seq = list(kf.split(list(range(len(indices)))))
-            print(
-                '[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
-            print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
-
-        else:
-            ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
-            ntest = len(self.train_dataset) - ntrain
-            print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
-            indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
-
-        loader_seq = []
-
-        for train, test in indices_seq:
-            train_indices = [indices[i] for i in train]
-            test_indices = [indices[i] for i in test]
-
-            train_sampler = data.sampler.SubsetRandomSampler(train_indices)
-            test_sampler = data.sampler.SubsetRandomSampler(test_indices)
-
-            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
-                                           sampler=train_sampler,
-                                           num_workers=self.args.num_workers, pin_memory=pm)
-            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
-                                          sampler=test_sampler,
-                                          num_workers=self.args.num_workers, pin_memory=pm)
-            loader_seq.append((train_loader, test_loader))
-
-        return loader_seq
-
-    def initialise_weights(self):
-        self.model.apply(weight_init)
-
-    ####### Methods for execution
-
-    def launch(self):
-        """
-        MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
-        the model is applied to the test dataset every args.test_step epochs
-        """
-
-        self.prepare_output()
-
-        loader_seq = self.get_loaders()
-        nfold = len(loader_seq)
-
-        for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
-            if nfold == 1:
-                print('[TRAINING CONFIGURATION] Starting single training ')
-                subdir = ''
-            else:
-                print('[TRAINING CONFIGURATION] Starting training with {}-fold cross validation'.format(nfold))
-                subdir = 'FOLD_{}'.format(i + 1)
-
-            self.args.total_step = len(self.train_loader)
-
-            self.initialise_weights()
-
-            self.model = self.model.to(self.device)
-
-            self.stats = {}
-
-            print('[PROGRESS] FOLD #{}'.format(i + 1))
-            for epoch in range(self.args.epochs):
-                t0 = time.time()
-
-                train_metrics = self.train_epoch()
-                self.checkpoint_epoch(epoch, train_metrics, subdir=subdir)
-
-                t1 = time.time()
-
-                print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
-
-    def checkpoint_epoch(self, epoch, metrics, subdir=''):
-        """
-        Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
-        If on a test epoch the test metrics will also be computed and writen in the trainlog
-        Args:
-            epoch (int): number of the epoch
-            metrics (dict): training metrics to be written
-            subdir (str): Optional, name of the target sub directory (used for k-fold)
-        """
-        if epoch % self.args.test_step == 0 or epoch == self.args.epochs:
-            test_metrics = self.test()
-            self.stats[epoch + 1] = {**metrics, **test_metrics}
-
-        else:
-            self.stats[epoch + 1] = metrics
-
-        print('[PROGRESS] Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
-
-        with open(os.path.join(self.args.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
-            json.dump(self.stats, outfile)
-        torch.save(
-            {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
-            os.path.join(self.args.res_dir, subdir, 'model.pth.tar'.format(epoch)))
-
-    def train_epoch(self):
-        """
-        Trains the model on one epoch and displays the evolution of the training metrics.
-        Returns a dictionary with the performance metrics over the whole epoch.
-        """
-        self.model.train()
-
-        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
-        loss_meter = tnt.meter.AverageValueMeter()
-
-        ta = time.time()
-        t4 = time.time()
-        for i, (x, y) in enumerate(self.train_loader):
-
-            # t0 = time.time()
-            # print('Loading {}'.format(t0-t4))
-            try:
-                x = x.to(self.device)
-            except AttributeError:  # dirty fix for extra data
-                for j, input in enumerate(x):
-                    x[j] = input.to(self.device)
-
-            y = y.to(self.device)
-            # t1 = time.time()
-            # print('ToDevice {}'.format(t1-t0))
-
-            outputs = self.model(x)
-            loss = self.criterion(outputs, y.long())
-            # t2 = time.time()
-            # print('Forward {}'.format(t2-t1))
-
-            acc_meter.add(outputs.detach(), y)
-            loss_meter.add(loss.item())
-            # t3 = time.time()
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            if self.args.lr_decay != 1:
-                self.scheduler.step()
-
-            # t4 = time.time()
-            # print('Backward {}'.format(t4-t2))
-
-            # print('batch_time : {}'.format(t1-t0))
-            if (i + 1) % 100 == 0:
-                tb = time.time()
-                elapsed = tb - ta
-                print('[PROGRESS] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
-                      .format(i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
-                              elapsed))
-                ta = tb
-
-        return {'loss': loss_meter.value()[0], 'accuracy': acc_meter.value()[0]}
-
-    def test(self):
-        """
-        Tests the model on the test set and returns the performance metrics as a dictionnary
-        """
-        # TODO generalise method and just give a list of metrics as rack parameter
-        print('Testing model . . .')
-        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
-        loss_meter = tnt.meter.AverageValueMeter()
-        iou_meter = tnt.meter.AverageValueMeter()
-
-        self.model.eval()
-        for (x, y) in self.test_loader:
-            x = x.to(self.device)
-            y = y.to(self.device)
-
-            with torch.no_grad():
-                prediction = self.model(x)
-                loss = self.criterion(prediction, y)
-
-            acc_meter.add(prediction, y)
-            loss_meter.add(loss.item())
-
-            iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
-
-            iou_meter.add(iou)
-
-        acc = acc_meter.value()[0]
-        loss = loss_meter.value()[0]
-        miou = iou_meter.value()[0]
-
-        test_metrics = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
-
-        print('[PERFORMANCE] Test accuracy : {:.3f}'.format(acc))
-        print('[PERFORMANCE] Test loss : {:.4f}'.format(loss))
-        print('[PERFORMANCE] Test IoU : {:.4f}'.format(miou))
-
-        return test_metrics
-
-
-class Rack_multimod:
-
-    def __init__(self):
-        torch.manual_seed(1)
         self.model_configs = {}
         self.set_basic_menu()
         self.set_device()
@@ -767,5 +418,354 @@ class Rack_multimod:
             print('[PERFORMANCE - MODEL {}] Test accuracy : {:.3f}'.format(model_name,acc))
             print('[PERFORMANCE - MODEL {}] Test loss : {:.4f}'.format(model_name,loss))
             print('[PERFORMANCE - MODEL {}] Test IoU : {:.4f}'.format(model_name,miou))
+
+        return test_metrics
+
+
+class Rack_old:
+
+    def __init__(self):
+        torch.manual_seed(1)
+
+        self.set_basic_menu()
+        self.set_device()
+        self.dataset = None
+
+    def to_dict(self):
+        d = vars(self.args).copy()
+        d['model'] = str(self.model)
+        d['criterion'] = str(self.criterion)
+        d['optimizer'] = str(self.optimizer)
+        d['device'] = str(self.device)
+        return d
+
+    ####### Methods for the options menu
+    def set_basic_menu(self):
+        """
+        Sets a basic argparse menu with the common arguments
+        """
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument('--dataset', default='/home/vsfg/data')
+        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
+        parser.add_argument('--resume', default='')
+
+        parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
+        parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
+        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
+        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
+        parser.add_argument('--kfold', default=0, type=int,
+                            help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
+
+        parser.add_argument('--epochs', default=1000, type=int)
+        parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
+        parser.add_argument('--lr_decay', default=1, type=float,
+                            help='Multiplicative factor used on learning rate at lr_steps')
+        parser.add_argument('--lr_steps', default='',
+                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
+        parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
+
+        self.parser = parser
+
+    def add_arguments(self, arg_dict):
+        """
+        Add custom arguments to the argparse menu
+        Args:
+            arg_dict (dict): {arg_name:{'default':default_value,'type':arg_type}
+        """
+        for name, setting in arg_dict.items():
+            self.parser.add_argument('--{}'.format(name), default=setting['default'], type=setting['type'])
+
+    def parse_args(self):
+        self.args = self.parser.parse_args()
+
+    def print_args(self):
+        print(self.args)
+
+    ####### Methods for setting the specific elements of the training rack
+
+    def set_device(self, device_name=None):
+        """Sets the device used by torch for computation, will prioritize GPU by default but can be set manually"""
+        try:
+            self.device = torch.device(device_name)
+        except TypeError:
+            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    def set_model(self, model):
+        """
+        Attaches a model instance to the training rack
+        Args:
+            model: instance of torch.nn.Module
+        """
+        self.model = model
+
+    def set_optimizer(self, optimizer_class):
+        """
+        Attaches an optimizer instance to the training rack
+        Args:
+            optimizer_class: class (NOT INSTANCE) of the optimizer to be used
+        """
+        self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
+
+        if self.args.lr_decay != 1:
+            print('[TRAINING CONFIGURATION] Preparing MutliStepLR')
+            steps = list(map(int, self.args.lr_steps.split('+')))
+            self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
+
+    def set_criterion(self, criterion):
+        """
+        Attaches a criterion instance to the training rack
+        Args:
+            criterion: instance of a torch.nn criterion
+        """
+        self.criterion = criterion
+
+    def set_dataset(self, dataset):
+        """
+        Attaches a dataset to the training rack. If only one dataset is provided, it will be split in train and test,
+        but a list of two datasets can also be provided (allows to have different image transformation on train and test).
+        For generality's sake the dataset should return items in the form (input,target).
+        If the network uses more exotic input, this needs to be dealt with in the forward method of its definition
+        Args:
+            dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
+        """
+        if isinstance(dataset, torch.utils.data.Dataset):
+            self.dataset = dataset
+        elif isinstance(dataset, list):
+            self.train_dataset, self.test_dataset = dataset
+        else:
+            raise ValueError
+
+    ####### Methods for preparation
+
+    def prepare_output(self):
+        """
+        Creates output directory and writes the configuration file in it.
+
+        """
+        if not os.path.exists(self.args.res_dir):
+            os.makedirs(self.args.res_dir)
+        else:
+            print('[WARNING] Output directory  already exists')
+
+        if self.args.kfold != 0:
+            for i in range(self.args.kfold):
+                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
+
+        with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
+            json.dump(self.to_dict(), fp, indent=4)
+
+    def get_loaders(self):
+        """
+        Splits the dataset in train and test and returns a list of train and test dataloader pairs.
+        Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
+        there is no k-fold
+        """
+        if self.args.pin_memory == 1:
+            pm = True
+        else:
+            pm = False
+
+        if self.dataset is not None:
+            self.train_dataset = self.dataset
+            self.test_dataset = self.dataset
+
+        print('[DATASET] Splitting dataset')
+
+        indices = list(range(len(self.train_dataset)))
+        if self.args.shuffle:
+            np.random.seed(1)  # TODO random seed as an option
+            np.random.shuffle(indices)
+
+        if self.args.kfold != 0:
+            kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
+            indices_seq = list(kf.split(list(range(len(indices)))))
+            print(
+                '[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
+            print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
+
+        else:
+            ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
+            ntest = len(self.train_dataset) - ntrain
+            print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
+            indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
+
+        loader_seq = []
+
+        for train, test in indices_seq:
+            train_indices = [indices[i] for i in train]
+            test_indices = [indices[i] for i in test]
+
+            train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+            test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                                           sampler=train_sampler,
+                                           num_workers=self.args.num_workers, pin_memory=pm)
+            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                                          sampler=test_sampler,
+                                          num_workers=self.args.num_workers, pin_memory=pm)
+            loader_seq.append((train_loader, test_loader))
+
+        return loader_seq
+
+    def initialise_weights(self):
+        self.model.apply(weight_init)
+
+    ####### Methods for execution
+
+    def launch(self):
+        """
+        MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
+        the model is applied to the test dataset every args.test_step epochs
+        """
+
+        self.prepare_output()
+
+        loader_seq = self.get_loaders()
+        nfold = len(loader_seq)
+
+        for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
+            if nfold == 1:
+                print('[TRAINING CONFIGURATION] Starting single training ')
+                subdir = ''
+            else:
+                print('[TRAINING CONFIGURATION] Starting training with {}-fold cross validation'.format(nfold))
+                subdir = 'FOLD_{}'.format(i + 1)
+
+            self.args.total_step = len(self.train_loader)
+
+            self.initialise_weights()
+
+            self.model = self.model.to(self.device)
+
+            self.stats = {}
+
+            print('[PROGRESS] FOLD #{}'.format(i + 1))
+            for epoch in range(self.args.epochs):
+                t0 = time.time()
+
+                train_metrics = self.train_epoch()
+                self.checkpoint_epoch(epoch, train_metrics, subdir=subdir)
+
+                t1 = time.time()
+
+                print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
+
+    def checkpoint_epoch(self, epoch, metrics, subdir=''):
+        """
+        Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
+        If on a test epoch the test metrics will also be computed and writen in the trainlog
+        Args:
+            epoch (int): number of the epoch
+            metrics (dict): training metrics to be written
+            subdir (str): Optional, name of the target sub directory (used for k-fold)
+        """
+        if epoch % self.args.test_step == 0 or epoch == self.args.epochs:
+            test_metrics = self.test()
+            self.stats[epoch + 1] = {**metrics, **test_metrics}
+
+        else:
+            self.stats[epoch + 1] = metrics
+
+        print('[PROGRESS] Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
+
+        with open(os.path.join(self.args.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
+            json.dump(self.stats, outfile)
+        torch.save(
+            {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
+            os.path.join(self.args.res_dir, subdir, 'model.pth.tar'.format(epoch)))
+
+    def train_epoch(self):
+        """
+        Trains the model on one epoch and displays the evolution of the training metrics.
+        Returns a dictionary with the performance metrics over the whole epoch.
+        """
+        self.model.train()
+
+        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
+        loss_meter = tnt.meter.AverageValueMeter()
+
+        ta = time.time()
+        t4 = time.time()
+        for i, (x, y) in enumerate(self.train_loader):
+
+            # t0 = time.time()
+            # print('Loading {}'.format(t0-t4))
+            try:
+                x = x.to(self.device)
+            except AttributeError:  # dirty fix for extra data
+                for j, input in enumerate(x):
+                    x[j] = input.to(self.device)
+
+            y = y.to(self.device)
+            # t1 = time.time()
+            # print('ToDevice {}'.format(t1-t0))
+
+            outputs = self.model(x)
+            loss = self.criterion(outputs, y.long())
+            # t2 = time.time()
+            # print('Forward {}'.format(t2-t1))
+
+            acc_meter.add(outputs.detach(), y)
+            loss_meter.add(loss.item())
+            # t3 = time.time()
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+            if self.args.lr_decay != 1:
+                self.scheduler.step()
+
+            # t4 = time.time()
+            # print('Backward {}'.format(t4-t2))
+
+            # print('batch_time : {}'.format(t1-t0))
+            if (i + 1) % 100 == 0:
+                tb = time.time()
+                elapsed = tb - ta
+                print('[PROGRESS] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                      .format(i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
+                              elapsed))
+                ta = tb
+
+        return {'loss': loss_meter.value()[0], 'accuracy': acc_meter.value()[0]}
+
+    def test(self):
+        """
+        Tests the model on the test set and returns the performance metrics as a dictionnary
+        """
+        # TODO generalise method and just give a list of metrics as rack parameter
+        print('Testing model . . .')
+        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
+        loss_meter = tnt.meter.AverageValueMeter()
+        iou_meter = tnt.meter.AverageValueMeter()
+
+        self.model.eval()
+        for (x, y) in self.test_loader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            with torch.no_grad():
+                prediction = self.model(x)
+                loss = self.criterion(prediction, y)
+
+            acc_meter.add(prediction, y)
+            loss_meter.add(loss.item())
+
+            iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+
+            iou_meter.add(iou)
+
+        acc = acc_meter.value()[0]
+        loss = loss_meter.value()[0]
+        miou = iou_meter.value()[0]
+
+        test_metrics = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
+
+        print('[PERFORMANCE] Test accuracy : {:.3f}'.format(acc))
+        print('[PERFORMANCE] Test loss : {:.4f}'.format(loss))
+        print('[PERFORMANCE] Test IoU : {:.4f}'.format(miou))
 
         return test_metrics
