@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from torch.utils import data
 
-from trainRack import Rack
+from izitorch import trainRack
 
 class ExModel(nn.Module):
     def __init__(self,hs,ins,nc):
@@ -37,7 +37,7 @@ optimizer_class = torch.optim.Adam
 criterion = nn.CrossEntropyLoss()
 
 if __name__ == '__main__':
-    rack = Rack()
+    rack = trainRack.Rack()
 
     rack.add_arguments(arg_dict)
     rack.parse_args()
