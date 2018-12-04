@@ -5,7 +5,7 @@ import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
 
-from izitorch.metrics import mIou
+from izitorch.metrics import mIou, conf_mat, per_class_performance
 from izitorch.utils import weight_init
 
 import argparse
@@ -15,7 +15,7 @@ import pickle as pkl
 import os
 
 
-#TODO update docstring
+# TODO update docstring
 
 
 class Rack:
@@ -93,7 +93,6 @@ class Rack:
         except TypeError:
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-
     def add_model_configs(self, model_configs):
         """
         Add model configurations to be trainined in the current script
@@ -111,7 +110,6 @@ class Rack:
 
         """
         self.model_configs.update(model_configs)
-
 
     def set_dataset(self, dataset):
         """
@@ -191,7 +189,6 @@ class Rack:
             print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
             indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
 
-
         loader_seq = []
 
         record = []
@@ -199,7 +196,7 @@ class Rack:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
 
-            record.append((train_indices,test_indices))
+            record.append((train_indices, test_indices))
 
             train_sampler = data.sampler.SubsetRandomSampler(train_indices)
             test_sampler = data.sampler.SubsetRandomSampler(test_indices)
@@ -212,7 +209,7 @@ class Rack:
                                           num_workers=self.args.num_workers, pin_memory=pm)
             loader_seq.append((train_loader, test_loader))
 
-        pkl.dump(record,open(os.path.join(self.args.res_dir,'TrainTest_indices.pkl'),'wb'))
+        pkl.dump(record, open(os.path.join(self.args.res_dir, 'TrainTest_indices.pkl'), 'wb'))
 
         return loader_seq
 
@@ -324,7 +321,7 @@ class Rack:
                                    'accuracy': acc_meter[model_name].value()[0]}
         return metrics
 
-    def checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO
+    def checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
         """
         Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
         If on a test epoch the test metrics will also be computed and writen in the trainlog
@@ -333,16 +330,12 @@ class Rack:
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
-        if epoch % self.args.test_step == 0 or epoch == self.args.epochs:
+        if epoch % self.args.test_step == 0:
             test_metrics = self.test()
-            for model_name in self.model_configs:
-                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]} #TODO
-        else:
             for model_name, conf in self.model_configs.items():
-                self.stats[model_name][epoch + 1] = metrics[model_name]
-
+                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
-                                                                                             self.args.epochs))
+                                                                                       self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile)
@@ -351,6 +344,35 @@ class Rack:
                      'optimizer': conf['optimizer'].state_dict()},
                     os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
 
+        elif epoch == self.args.epochs:
+            test_metrics, per_class, conf_m = self.final_test()
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
+
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile)
+                with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
+                    json.dump(per_class[model_name])
+                pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
+
+                torch.save(
+                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                     'optimizer': conf['optimizer'].state_dict()},
+                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
+        else:
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = metrics[model_name]
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
+
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile)
+                torch.save(
+                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                     'optimizer': conf['optimizer'].state_dict()},
+                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
 
     def test(self):  # TODO
         """
@@ -374,7 +396,6 @@ class Rack:
             y = y.to(self.device)
 
             for model_name, conf in self.model_configs.items():
-
                 with torch.no_grad():
                     prediction = conf['model'](x)
                     loss = conf['criterion'](prediction, y)
@@ -388,17 +409,67 @@ class Rack:
 
         test_metrics = {}
         for model_name in self.model_configs:
-
             acc = acc_meter[model_name].value()[0]
             loss = loss_meter[model_name].value()[0]
             miou = iou_meter[model_name].value()[0]
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name,acc))
-            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name,loss))
-            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name,miou))
+            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
+            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
+            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
 
         return test_metrics
 
+    def final_test(self):
+        acc_meter = {}
+        loss_meter = {}
+        iou_meter = {}
 
+        y_true = []
+        y_pred = {}
+
+        for model_name, conf in self.model_configs.items():
+            conf['model'].eval()
+            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
+            loss_meter[model_name] = tnt.meter.AverageValueMeter()
+            iou_meter[model_name] = tnt.meter.AverageValueMeter()
+
+        for (x, y) in self.test_loader:
+            y_true.append(list(map(int, y)))
+
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            for model_name, conf in self.model_configs.items():
+                with torch.no_grad():
+                    prediction = conf['model'](x)
+                    loss = conf['criterion'](prediction, y)
+
+                y_pred[model_name].append(list(map(int, prediction)))
+
+                acc_meter[model_name].add(prediction, y)
+                loss_meter[model_name].add(loss.item())
+
+                iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+
+                iou_meter[model_name].add(iou)
+
+        test_metrics = {}
+        per_class = {}
+        conf_m = {}
+        for model_name in self.model_configs:
+            acc = acc_meter[model_name].value()[0]
+            loss = loss_meter[model_name].value()[0]
+            miou = iou_meter[model_name].value()[0]
+
+            per_class[model_name] = per_class_performance(y_true, y_pred[model_name])
+            conf_m[model_name] = conf_mat(y_true, y_pred[model_name])
+
+            test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
+
+            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
+            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
+            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
+
+        return test_metrics, per_class, conf_m
