@@ -1,6 +1,5 @@
 import torch
 from torch.utils import data
-from torch.optim.lr_scheduler import MultiStepLR
 import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
@@ -306,6 +305,7 @@ class Rack:
 
                 if 'scheduler' in conf:
                     conf['scheduler'].step()
+
 
                 if (i + 1) % 100 == 0:
                     tb = time.time()
