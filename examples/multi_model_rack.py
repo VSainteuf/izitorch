@@ -2,7 +2,8 @@ import torch.nn as nn
 import torch
 from torch.utils import data
 
-from trainRack import Rack
+from izitorch import trainRack
+
 
 class ExModel(nn.Module):
     def __init__(self,hs,ins,nc):
@@ -13,8 +14,6 @@ class ExModel(nn.Module):
     def forward(self, input, hx=None):
         out, hn = self.rec(input)
         return nn.Softmax(dim=-1)(self.cla(hn[-1,:,:]))
-
-model = ExModel(20, 10, 2)
 
 
 class RandDataset(data.Dataset):
@@ -33,18 +32,43 @@ class RandDataset(data.Dataset):
 
 
 arg_dict = {'num_classes': {'default': 2, 'type': int}}
-optimizer_class = torch.optim.Adam
-criterion = nn.CrossEntropyLoss()
+
+
+m1 = ExModel(50, 10, 2)
+conf1 = {
+    'model1':{
+        'model': m1,
+        'criterion': nn.CrossEntropyLoss(),
+        'optimizer': torch.optim.Adam(m1.parameters())
+    }
+}
+
+m2 = ExModel(10, 10, 2)
+conf2 = {
+    'model2':{
+        'model': m2,
+        'criterion': nn.CrossEntropyLoss(),
+        'optimizer': torch.optim.Adam(m2.parameters())
+    }
+}
+
+m3 = ExModel(1000, 10, 2)
+conf3 = {
+    'model3':{
+        'model': m3,
+        'criterion': nn.CrossEntropyLoss(),
+        'optimizer': torch.optim.Adam(m3.parameters())
+    }
+}
 
 if __name__ == '__main__':
-    rack = Rack()
+    rack = trainRack.Rack()
 
     rack.add_arguments(arg_dict)
     rack.parse_args()
 
-    rack.set_model(model)
-    rack.set_optimizer(optimizer_class)
-    rack.set_criterion(criterion)
+    rack.add_model_configs({**conf1,**conf2,**conf3})
+
     rack.set_dataset(RandDataset())
 
     rack.launch()

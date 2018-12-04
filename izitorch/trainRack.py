@@ -1,35 +1,43 @@
 import torch
 from torch.utils import data
-from torch.optim.lr_scheduler import MultiStepLR
 import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
 
-from izitorch.metrics import mIou
+from izitorch.metrics import mIou, conf_mat, per_class_performance
 from izitorch.utils import weight_init
 
 import argparse
 import time
 import json
+import pickle as pkl
 import os
+
+
+# TODO update docstring
 
 
 class Rack:
 
     def __init__(self):
         torch.manual_seed(1)
-
+        self.model_configs = {}
         self.set_basic_menu()
         self.set_device()
         self.dataset = None
 
     def to_dict(self):
-        d = vars(self.args).copy()
-        d['model'] = str(self.model)
-        d['criterion'] = str(self.criterion)
-        d['optimizer'] = str(self.optimizer)
-        d['device'] = str(self.device)
-        return d
+        output = {}
+        for model_name, conf in self.model_configs.items():
+            d = vars(self.args).copy()
+            d['device'] = str(self.device)
+
+            d['model'] = str(conf['model'])
+            d['criterion'] = str(conf['criterion'])
+            d['optimizer'] = str(conf['optimizer'])
+
+            output[model_name] = d
+        return output
 
     ####### Methods for the options menu
     def set_basic_menu(self):
@@ -84,34 +92,23 @@ class Rack:
         except TypeError:
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    def set_model(self, model):
+    def add_model_configs(self, model_configs):
         """
-        Attaches a model instance to the training rack
+        Add model configurations to be trainined in the current script
         Args:
-            model: instance of torch.nn.Module
-        """
-        self.model = model
+            model_configs (dict): model configuration with entries in the form:
+                        {
+                            model_name:{
+                                        'model':torch.nn instance,
+                                        'optimizer': torch optimizer instance,
+                                        'criterion' : torch.nn criterion instance,
+                                        'scheduler' : (optional) torch.optim learning rate scheduler
+                            }
+                        }
+        Returns:
 
-    def set_optimizer(self, optimizer_class):
         """
-        Attaches an optimizer instance to the training rack
-        Args:
-            optimizer_class: class (NOT INSTANCE) of the optimizer to be used
-        """
-        self.optimizer = optimizer_class(self.model.parameters(), lr=self.args.lr)
-
-        if self.args.lr_decay != 1:
-            print('[TRAINING CONFIGURATION] Preparing MutliStepLR')
-            steps = list(map(int, self.args.lr_steps.split('+')))
-            self.scheduler = MultiStepLR(self.optimizer, milestones=steps, gamma=self.args.lr_decay)
-
-    def set_criterion(self, criterion):
-        """
-        Attaches a criterion instance to the training rack
-        Args:
-            criterion: instance of a torch.nn criterion
-        """
-        self.criterion = criterion
+        self.model_configs.update(model_configs)
 
     def set_dataset(self, dataset):
         """
@@ -131,24 +128,32 @@ class Rack:
 
     ####### Methods for preparation
 
-    def prepare_output(self):
+    def _prepare_output(self):
         """
         Creates output directory and writes the configuration file in it.
 
         """
-        if not os.path.exists(self.args.res_dir):
-            os.makedirs(self.args.res_dir)
-        else:
-            print('[WARNING] Output directory  already exists')
 
-        if self.args.kfold != 0:
-            for i in range(self.args.kfold):
-                os.makedirs(os.path.join(self.args.res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
+        repr = self.to_dict()
 
-        with open(os.path.join(self.args.res_dir, 'conf.json'), 'w') as fp:
-            json.dump(self.to_dict(), fp, indent=4)
+        for model_name in self.model_configs:
 
-    def get_loaders(self):
+            res_dir = os.path.join(self.args.res_dir, model_name)
+            self.model_configs[model_name]['res_dir'] = res_dir
+
+            if not os.path.exists(res_dir):
+                os.makedirs(res_dir)
+            else:
+                print('[WARNING] Output directory  already exists')
+
+            if self.args.kfold != 0:
+                for i in range(self.args.kfold):
+                    os.makedirs(os.path.join(res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
+
+            with open(os.path.join(res_dir, 'conf.json'), 'w') as fp:
+                json.dump(repr[model_name], fp, indent=4)
+
+    def _get_loaders(self):
         """
         Splits the dataset in train and test and returns a list of train and test dataloader pairs.
         Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
@@ -185,9 +190,12 @@ class Rack:
 
         loader_seq = []
 
+        record = []
         for train, test in indices_seq:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
+
+            record.append((train_indices, test_indices))
 
             train_sampler = data.sampler.SubsetRandomSampler(train_indices)
             test_sampler = data.sampler.SubsetRandomSampler(test_indices)
@@ -200,41 +208,44 @@ class Rack:
                                           num_workers=self.args.num_workers, pin_memory=pm)
             loader_seq.append((train_loader, test_loader))
 
+        pkl.dump(record, open(os.path.join(self.args.res_dir, 'TrainTest_indices.pkl'), 'wb'))
+
         return loader_seq
 
-    def initialise_weights(self):
-        self.model.apply(weight_init)
+    def _init_weights(self):
+        for conf in self.model_configs.values():
+            conf['model'].apply(weight_init)
 
     ####### Methods for execution
 
-    def launch(self):
+    def launch(self):  # TODO
         """
         MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
         the model is applied to the test dataset every args.test_step epochs
         """
 
-        self.prepare_output()
+        self._prepare_output()
 
-        loader_seq = self.get_loaders()
+        loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
         for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
+
             if nfold == 1:
                 print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('[TRAINING CONFIGURATION] Starting training with {}-fold cross validation'.format(nfold))
+                print('[TRAINING CONFIGURATION] Training with {}-fold cross validation'.format(nfold))
                 subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
 
-            self.initialise_weights()
+            self._init_weights()
 
-            self.model = self.model.to(self.device)
+            self._init_trainlogs()
 
-            self.stats = {}
+            self._models_to_device()
 
-            print('[PROGRESS] FOLD #{}'.format(i + 1))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
@@ -245,7 +256,73 @@ class Rack:
 
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
 
-    def checkpoint_epoch(self, epoch, metrics, subdir=''):
+    def _init_trainlogs(self):
+        self.stats = {}
+        for model_name, conf in self.model_configs.items():
+            self.stats[model_name] = {}
+
+    def _models_to_device(self):
+        for model_name, conf in self.model_configs.items():
+            conf['model'] = conf['model'].to(self.device)
+
+    def train_epoch(self):  # TODO
+        """
+        Trains the model on one epoch and displays the evolution of the training metrics.
+        Returns a dictionary with the performance metrics over the whole epoch.
+        """
+        acc_meter = {}
+        loss_meter = {}
+
+        for model_name, conf in self.model_configs.items():
+            conf['model'].train()
+            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
+            loss_meter[model_name] = tnt.meter.AverageValueMeter()
+
+        ta = time.time()
+
+        for i, (x, y) in enumerate(self.train_loader):
+
+            try:
+                x = x.to(self.device)
+            except AttributeError:  # dirty fix for extra data
+                for j, input in enumerate(x):
+                    x[j] = input.to(self.device)
+
+            y = y.to(self.device)
+
+            loss = {}
+            outputs = {}
+            for model_name, conf in self.model_configs.items():
+                outputs[model_name] = conf['model'](x)
+                loss[model_name] = conf['criterion'](outputs[model_name], y.long())
+
+                acc_meter[model_name].add(outputs[model_name].detach(), y)
+                loss_meter[model_name].add(loss[model_name].item())
+
+                conf['optimizer'].zero_grad()
+                loss[model_name].backward()
+                conf['optimizer'].step()
+
+                if 'scheduler' in conf:
+                    conf['scheduler'].step() #TODO there is apparently a bug when scheduler is used, to be fixed
+
+
+                if (i + 1) % 100 == 0:
+                    tb = time.time()
+                    elapsed = tb - ta
+                    print('[PROGRESS - {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                          .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
+                                  acc_meter[model_name].value()[0],
+                                  elapsed))
+                    ta = tb
+
+        metrics = {}
+        for model_name in self.model_configs:
+            metrics[model_name] = {'loss': loss_meter[model_name].value()[0],
+                                   'accuracy': acc_meter[model_name].value()[0]}
+        return metrics
+
+    def checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
         """
         Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
         If on a test epoch the test metrics will also be computed and writen in the trainlog
@@ -254,110 +331,147 @@ class Rack:
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
-        if epoch % self.args.test_step == 0 or epoch == self.args.epochs:
+        if epoch % self.args.test_step == 0:
             test_metrics = self.test()
-            self.stats[epoch + 1] = {**metrics, **test_metrics}
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
 
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile, indent = 4)
+                torch.save(
+                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                     'optimizer': conf['optimizer'].state_dict()},
+                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
+
+        elif epoch + 1 == self.args.epochs:
+            test_metrics, per_class, conf_m = self.final_test()
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
+
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile, indent = 4)
+                with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
+                    json.dump(per_class[model_name], outfile, indent = 4)
+                pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
+
+                torch.save(
+                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                     'optimizer': conf['optimizer'].state_dict()},
+                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
         else:
-            self.stats[epoch + 1] = metrics
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = metrics[model_name]
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
 
-        print('[PROGRESS] Writing checkpoint of epoch {}\{} . . .'.format(epoch + 1, self.args.epochs))
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile, indent = 4)
+                torch.save(
+                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                     'optimizer': conf['optimizer'].state_dict()},
+                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
 
-        with open(os.path.join(self.args.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
-            json.dump(self.stats, outfile)
-        torch.save(
-            {'epoch': epoch + 1, 'state_dict': self.model.state_dict(), 'optimizer': self.optimizer.state_dict()},
-            os.path.join(self.args.res_dir, subdir, 'model.pth.tar'.format(epoch)))
-
-    def train_epoch(self):
-        """
-        Trains the model on one epoch and displays the evolution of the training metrics.
-        Returns a dictionary with the performance metrics over the whole epoch.
-        """
-        self.model.train()
-
-        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
-        loss_meter = tnt.meter.AverageValueMeter()
-
-        ta = time.time()
-        t4 = time.time()
-        for i, (x, y) in enumerate(self.train_loader):
-
-            # t0 = time.time()
-            # print('Loading {}'.format(t0-t4))
-            try:
-                x = x.to(self.device)
-            except AttributeError:  # dirty fix for extra data
-                for j, input in enumerate(x):
-                    x[j] = input.to(self.device)
-
-            y = y.to(self.device)
-            # t1 = time.time()
-            # print('ToDevice {}'.format(t1-t0))
-
-            outputs = self.model(x)
-            loss = self.criterion(outputs, y.long())
-            # t2 = time.time()
-            # print('Forward {}'.format(t2-t1))
-
-            acc_meter.add(outputs.detach(), y)
-            loss_meter.add(loss.item())
-            # t3 = time.time()
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            if self.args.lr_decay != 1:
-                self.scheduler.step()
-
-            # t4 = time.time()
-            # print('Backward {}'.format(t4-t2))
-
-            # print('batch_time : {}'.format(t1-t0))
-            if (i + 1) % 100 == 0:
-                tb = time.time()
-                elapsed = tb - ta
-                print('[PROGRESS] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
-                      .format(i + 1, self.args.total_step, loss_meter.value()[0], acc_meter.value()[0],
-                              elapsed))
-                ta = tb
-
-        return {'loss': loss_meter.value()[0], 'accuracy': acc_meter.value()[0]}
-
-    def test(self):
+    def test(self):  # TODO
         """
         Tests the model on the test set and returns the performance metrics as a dictionnary
         """
         # TODO generalise method and just give a list of metrics as rack parameter
-        print('Testing model . . .')
-        acc_meter = tnt.meter.ClassErrorMeter(accuracy=True)
-        loss_meter = tnt.meter.AverageValueMeter()
-        iou_meter = tnt.meter.AverageValueMeter()
+        print('Testing models . . .')
 
-        self.model.eval()
+        acc_meter = {}
+        loss_meter = {}
+        iou_meter = {}
+
+        for model_name, conf in self.model_configs.items():
+            conf['model'].eval()
+            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
+            loss_meter[model_name] = tnt.meter.AverageValueMeter()
+            iou_meter[model_name] = tnt.meter.AverageValueMeter()
+
         for (x, y) in self.test_loader:
             x = x.to(self.device)
             y = y.to(self.device)
 
-            with torch.no_grad():
-                prediction = self.model(x)
-                loss = self.criterion(prediction, y)
+            for model_name, conf in self.model_configs.items():
+                with torch.no_grad():
+                    prediction = conf['model'](x)
+                    loss = conf['criterion'](prediction, y)
 
-            acc_meter.add(prediction, y)
-            loss_meter.add(loss.item())
+                acc_meter[model_name].add(prediction, y)
+                loss_meter[model_name].add(loss.item())
 
-            iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+                iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
 
-            iou_meter.add(iou)
+                iou_meter[model_name].add(iou)
 
-        acc = acc_meter.value()[0]
-        loss = loss_meter.value()[0]
-        miou = iou_meter.value()[0]
+        test_metrics = {}
+        for model_name in self.model_configs:
+            acc = acc_meter[model_name].value()[0]
+            loss = loss_meter[model_name].value()[0]
+            miou = iou_meter[model_name].value()[0]
 
-        test_metrics = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
+            test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-        print('[PERFORMANCE] Test accuracy : {:.3f}'.format(acc))
-        print('[PERFORMANCE] Test loss : {:.4f}'.format(loss))
-        print('[PERFORMANCE] Test IoU : {:.4f}'.format(miou))
+            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
+            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
+            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
 
         return test_metrics
+
+    def final_test(self):
+        acc_meter = {}
+        loss_meter = {}
+        iou_meter = {}
+
+        y_true = []
+        y_pred = {m: [] for m in self.model_configs}
+
+        for model_name, conf in self.model_configs.items():
+            conf['model'].eval()
+            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
+            loss_meter[model_name] = tnt.meter.AverageValueMeter()
+            iou_meter[model_name] = tnt.meter.AverageValueMeter()
+
+        for (x, y) in self.test_loader:
+            y_true.extend(list(map(int, y)))
+
+            x = x.to(self.device)
+            y = y.to(self.device)
+
+            for model_name, conf in self.model_configs.items():
+                with torch.no_grad():
+                    prediction = conf['model'](x)
+                    loss = conf['criterion'](prediction, y)
+
+                acc_meter[model_name].add(prediction, y)
+                loss_meter[model_name].add(loss.item())
+
+                y_p = prediction.argmax(dim=1).cpu().numpy()
+                y_pred[model_name].extend(list(y_p))
+
+                iou = mIou(y.cpu().numpy(), y_p, n_classes=self.args.num_classes)
+                iou_meter[model_name].add(iou)
+
+        test_metrics = {}
+        per_class = {}
+        conf_m = {}
+
+        for model_name in self.model_configs:
+            acc = acc_meter[model_name].value()[0]
+            loss = loss_meter[model_name].value()[0]
+            miou = iou_meter[model_name].value()[0]
+
+            per_class[model_name] = per_class_performance(y_true, y_pred[model_name])
+            conf_m[model_name] = conf_mat(y_true, y_pred[model_name])
+
+            test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
+
+            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
+            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
+            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
+
+        return test_metrics, per_class, conf_m
