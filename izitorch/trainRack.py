@@ -103,7 +103,8 @@ class Rack:
                             model_name:{
                                         'model':torch.nn instance,
                                         'optimizer': torch optimizer instance,
-                                        'criterion' : torch.nn criterion instance
+                                        'criterion' : torch.nn criterion instance,
+                                        'scheduler' : (optional) torch.optim learning rate scheduler
                             }
                         }
         Returns:
@@ -304,6 +305,9 @@ class Rack:
                 conf['optimizer'].zero_grad()
                 loss.backward()
                 conf['optimizer'].step()
+
+                if 'scheduler' in conf:
+                    conf['scheduler'].step()
 
                 if (i + 1) % 100 == 0:
                     tb = time.time()
