@@ -304,7 +304,7 @@ class Rack:
                 conf['optimizer'].step()
 
                 if 'scheduler' in conf:
-                    conf['scheduler'].step()
+                    conf['scheduler'].step() #TODO there is apparently a bug when scheduler is used, to be fixed
 
 
                 if (i + 1) % 100 == 0:
