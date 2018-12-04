@@ -247,7 +247,6 @@ class Rack:
 
             self._models_to_device()
 
-            print('[PROGRESS] FOLD #{}'.format(i + 1))
             for epoch in range(self.args.epochs):
                 t0 = time.time()
 
@@ -292,15 +291,17 @@ class Rack:
 
             y = y.to(self.device)
 
+            loss = {}
+            outputs = {}
             for model_name, conf in self.model_configs.items():
-                outputs = conf['model'](x)
-                loss = conf['criterion'](outputs, y.long())
+                outputs[model_name] = conf['model'](x)
+                loss[model_name] = conf['criterion'](outputs[model_name], y.long())
 
-                acc_meter[model_name].add(outputs.detach(), y)
-                loss_meter[model_name].add(loss.item())
+                acc_meter[model_name].add(outputs[model_name].detach(), y)
+                loss_meter[model_name].add(loss[model_name].item())
 
                 conf['optimizer'].zero_grad()
-                loss.backward()
+                loss[model_name].backward()
                 conf['optimizer'].step()
 
                 if 'scheduler' in conf:
@@ -338,13 +339,13 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile)
+                    json.dump(self.stats[model_name], outfile, indent = 4)
                 torch.save(
                     {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                      'optimizer': conf['optimizer'].state_dict()},
                     os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
 
-        elif epoch == self.args.epochs:
+        elif epoch + 1 == self.args.epochs:
             test_metrics, per_class, conf_m = self.final_test()
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
@@ -352,9 +353,9 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile)
+                    json.dump(self.stats[model_name], outfile, indent = 4)
                 with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
-                    json.dump(per_class[model_name])
+                    json.dump(per_class[model_name], outfile, indent = 4)
                 pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
 
                 torch.save(
@@ -368,7 +369,7 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile)
+                    json.dump(self.stats[model_name], outfile, indent = 4)
                 torch.save(
                     {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                      'optimizer': conf['optimizer'].state_dict()},
@@ -427,7 +428,7 @@ class Rack:
         iou_meter = {}
 
         y_true = []
-        y_pred = {}
+        y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
             conf['model'].eval()
@@ -436,7 +437,7 @@ class Rack:
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
 
         for (x, y) in self.test_loader:
-            y_true.append(list(map(int, y)))
+            y_true.extend(list(map(int, y)))
 
             x = x.to(self.device)
             y = y.to(self.device)
@@ -446,18 +447,19 @@ class Rack:
                     prediction = conf['model'](x)
                     loss = conf['criterion'](prediction, y)
 
-                y_pred[model_name].append(list(map(int, prediction)))
-
                 acc_meter[model_name].add(prediction, y)
                 loss_meter[model_name].add(loss.item())
 
-                iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+                y_p = prediction.argmax(dim=1).cpu().numpy()
+                y_pred[model_name].extend(list(y_p))
 
+                iou = mIou(y.cpu().numpy(), y_p, n_classes=self.args.num_classes)
                 iou_meter[model_name].add(iou)
 
         test_metrics = {}
         per_class = {}
         conf_m = {}
+
         for model_name in self.model_configs:
             acc = acc_meter[model_name].value()[0]
             loss = loss_meter[model_name].value()[0]
