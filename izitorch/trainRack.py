@@ -190,13 +190,15 @@ class Rack:
             print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
             indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
 
-        pkl.dump(indices_seq,open(os.path.join(self.args.res_dir,'traintest_indices.pkl'),'wb'))
 
         loader_seq = []
 
+        record = []
         for train, test in indices_seq:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
+
+            record.append((train_indices,test_indices))
 
             train_sampler = data.sampler.SubsetRandomSampler(train_indices)
             test_sampler = data.sampler.SubsetRandomSampler(test_indices)
@@ -208,6 +210,8 @@ class Rack:
                                           sampler=test_sampler,
                                           num_workers=self.args.num_workers, pin_memory=pm)
             loader_seq.append((train_loader, test_loader))
+
+        pkl.dump(record,open(os.path.join(self.args.res_dir,'TrainTest_indices.pkl'),'wb'))
 
         return loader_seq
 
