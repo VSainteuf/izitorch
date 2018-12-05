@@ -310,7 +310,7 @@ class Rack:
                 if (i + 1) % 100 == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[PROGRESS - {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.2f}'
+                    print('[PROGRESS - {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.4f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
                                   acc_meter[model_name].value()[0],
                                   elapsed))
