@@ -75,3 +75,10 @@ def weight_init(m):
             else:
                 init.normal_(param.data)
 
+
+
+def get_nparams(model, trainable_only=True):
+    if trainable_only:
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    else:
+        return sum(p.numel() for p in model.parameters())

@@ -5,7 +5,7 @@ import numpy as np
 from sklearn import model_selection
 
 from izitorch.metrics import mIou, conf_mat, per_class_performance
-from izitorch.utils import weight_init
+from izitorch.utils import weight_init, get_nparams
 
 import argparse
 import time
@@ -35,6 +35,7 @@ class Rack:
             d['model'] = str(conf['model'])
             d['criterion'] = str(conf['criterion'])
             d['optimizer'] = str(conf['optimizer'])
+            d['nparams'] = get_nparams(conf['model'])
 
             output[model_name] = d
         return output
