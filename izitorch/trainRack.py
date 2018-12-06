@@ -256,6 +256,7 @@ class Rack:
                 t1 = time.time()
 
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
+                print('####################################################')
 
     def _init_trainlogs(self):
         self.stats = {}
@@ -273,11 +274,13 @@ class Rack:
         """
         acc_meter = {}
         loss_meter = {}
+        iou_meter = {}
 
         for model_name, conf in self.model_configs.items():
             conf['model'].train()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
+            iou_meter[model_name] = tnt.meter.AverageValueMeter()
 
         ta = time.time()
 
@@ -297,7 +300,11 @@ class Rack:
                 outputs[model_name] = conf['model'](x)
                 loss[model_name] = conf['criterion'](outputs[model_name], y.long())
 
-                acc_meter[model_name].add(outputs[model_name].detach(), y)
+                y_pred = outputs[model_name].detach()
+
+                acc_meter[model_name].add(y_pred, y)
+                iou_meter[model_name].add(
+                    mIou(y.cpu().numpy(), y_pred.argmax(dim=1).cpu().numpy(), self.args.num_classes))
                 loss_meter[model_name].add(loss[model_name].item())
 
                 conf['optimizer'].zero_grad()
@@ -305,22 +312,23 @@ class Rack:
                 conf['optimizer'].step()
 
                 if 'scheduler' in conf:
-                    conf['scheduler'].step() #TODO there is apparently a bug when scheduler is used, to be fixed
-
+                    conf['scheduler'].step()  # TODO there is apparently a bug when scheduler is used, to be fixed
 
                 if (i + 1) % 100 == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[PROGRESS - {}] Step [{}/{}], Loss: {:.4f}, Accuracy : {:.3f}, Elapsed time:{:.4f}'
+                    print('[{:20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, IoU : {:.3f}, Duration:{:.4f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
-                                  acc_meter[model_name].value()[0],
+                                  acc_meter[model_name].value()[0],iou_meter[model_name].value()[0],
                                   elapsed))
                     ta = tb
 
         metrics = {}
         for model_name in self.model_configs:
             metrics[model_name] = {'loss': loss_meter[model_name].value()[0],
-                                   'accuracy': acc_meter[model_name].value()[0]}
+                                   'accuracy': acc_meter[model_name].value()[0],
+                                   'IoU': iou_meter[model_name].value()[0]}
+
         return metrics
 
     def checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
@@ -340,7 +348,7 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile, indent = 4)
+                    json.dump(self.stats[model_name], outfile, indent=4)
                 torch.save(
                     {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                      'optimizer': conf['optimizer'].state_dict()},
@@ -354,9 +362,9 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile, indent = 4)
+                    json.dump(self.stats[model_name], outfile, indent=4)
                 with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
-                    json.dump(per_class[model_name], outfile, indent = 4)
+                    json.dump(per_class[model_name], outfile, indent=4)
                 pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
 
                 torch.save(
@@ -370,7 +378,7 @@ class Rack:
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile, indent = 4)
+                    json.dump(self.stats[model_name], outfile, indent=4)
                 torch.save(
                     {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                      'optimizer': conf['optimizer'].state_dict()},
