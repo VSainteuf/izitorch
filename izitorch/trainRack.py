@@ -173,7 +173,7 @@ class Rack:
 
         indices = list(range(len(self.train_dataset)))
         if self.args.shuffle:
-            np.random.seed(1)  # TODO random seed as an option
+            np.random.seed(128)  # TODO random seed as an option
             np.random.shuffle(indices)
 
         if self.args.kfold != 0:
@@ -317,7 +317,7 @@ class Rack:
                 if (i + 1) % 100 == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[{:20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, IoU : {:.3f}, Duration:{:.4f}'
+                    print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, IoU : {:.3f}, Duration:{:.4f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
                                   acc_meter[model_name].value()[0],iou_meter[model_name].value()[0],
                                   elapsed))
@@ -405,15 +405,17 @@ class Rack:
             x = x.to(self.device)
             y = y.to(self.device)
 
+            prediction = {}
+            loss = {}
             for model_name, conf in self.model_configs.items():
                 with torch.no_grad():
-                    prediction = conf['model'](x)
-                    loss = conf['criterion'](prediction, y)
+                    prediction[model_name] = conf['model'](x)
+                    loss[model_name] = conf['criterion'](prediction[model_name], y)
 
-                acc_meter[model_name].add(prediction, y)
-                loss_meter[model_name].add(loss.item())
+                acc_meter[model_name].add(prediction[model_name], y)
+                loss_meter[model_name].add(loss[model_name].item())
 
-                iou = mIou(y.cpu().numpy(), (prediction.argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+                iou = mIou(y.cpu().numpy(), (prediction[model_name].argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
 
                 iou_meter[model_name].add(iou)
 
