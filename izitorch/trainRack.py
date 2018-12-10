@@ -215,7 +215,7 @@ class Rack:
 
     def _init_weights(self):
         for conf in self.model_configs.values():
-            conf['model'].apply(weight_init)
+            conf['model'] = conf['model'].apply(weight_init)
 
     ####### Methods for execution
 
@@ -277,7 +277,7 @@ class Rack:
         iou_meter = {}
 
         for model_name, conf in self.model_configs.items():
-            conf['model'].train()
+            conf['model'] = conf['model'].train()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
@@ -396,7 +396,7 @@ class Rack:
         iou_meter = {}
 
         for model_name, conf in self.model_configs.items():
-            conf['model'].eval()
+            conf['model'] = conf['model'].eval()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
@@ -442,7 +442,7 @@ class Rack:
         y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
-            conf['model'].eval()
+            conf['model'] = conf['model'].eval()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
