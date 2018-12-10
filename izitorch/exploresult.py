@@ -94,9 +94,14 @@ class ModelResult:
         else:
             return os.path.split(self.folder)[-1]
 
+
     def _get_fold_folders(self):
-        return [os.path.join(self.folder, f) for f in os.listdir(self.folder) if
+        folds = [os.path.join(self.folder, f) for f in os.listdir(self.folder) if
                 'FOLD_' in f and os.path.isdir(os.path.join(self.folder, f))]
+        if len(folds) == 0:
+            return [self.folder]
+        else:
+            return folds
 
     def _parse_conf(self):
         par_path = os.path.abspath(self.folder)
