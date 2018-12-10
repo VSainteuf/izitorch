@@ -31,8 +31,14 @@ class Fold:
 
         return df
 
+    def _is_kfold(self):
+        return 'FOLD_' in self.folder
+
     def _parse_conf(self):
-        par_path = os.path.abspath(os.path.join(self.folder, '..'))
+        if self._is_kfold():
+            par_path = os.path.abspath(os.path.join(self.folder, '..'))
+        else:
+            par_path = self.folder
         with open(os.path.join(par_path, 'conf.json'))as src:
             c = json.loads(src.read())
         return c
