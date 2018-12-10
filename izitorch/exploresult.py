@@ -182,3 +182,26 @@ class SetupResult:
             res[m.name] = scores
 
         return res.transpose()
+
+
+class ExpResult:
+    def __init__(self, folder):
+        self.folder = folder
+        self.name = self._parse_name()
+        self.setups = [SetupResult(f) for f in self._get_setup_folders()]
+
+    def _parse_name(self):
+        if self.folder[-1] == '/':
+            return os.path.split(self.folder[:-1])[-1]
+        else:
+            return os.path.split(self.folder)[-1]
+
+    def _get_setup_folders(self):
+        return [os.path.join(self.folder, f) for f in os.listdir(self.folder) if
+                os.path.isdir(os.path.join(self.folder, f))]
+
+    def compare(self, metric='test_IoU'):
+        res = pd.DataFrame()
+        for sr in self.setups:
+            res[sr.name] = sr.compare()[metric]
+        return res
