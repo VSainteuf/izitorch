@@ -27,6 +27,8 @@ class Fold:
             t = json.loads(src.read())
         df = pd.DataFrame(t).transpose()
         df['test_IoU'] = df['test_IoU'] * 100
+        df['IoU'] = df['IoU']*100
+
         return df
 
     def _parse_conf(self):
@@ -78,6 +80,7 @@ class ModelResult:
     def __init__(self, folder):
         self.folder = folder
         self.name = self._parse_name()
+        self.conf = self._parse_conf()
         self.fold_folders = self._get_fold_folders()
         self.nfolds = len(self.fold_folders)
         self.folds = [Fold(f) for f in self.fold_folders]
@@ -94,6 +97,15 @@ class ModelResult:
     def _get_fold_folders(self):
         return [os.path.join(self.folder, f) for f in os.listdir(self.folder) if
                 'FOLD_' in f and os.path.isdir(os.path.join(self.folder, f))]
+
+    def _parse_conf(self):
+        par_path = os.path.abspath(self.folder)
+        with open(os.path.join(par_path,'conf.json'))as src:
+            c = json.loads(src.read())
+        return c
+
+    def get_nparams(self):
+        return self.conf['nparams']
 
     def get_series(self, folds=None, columns=None):
         res = pd.DataFrame()
