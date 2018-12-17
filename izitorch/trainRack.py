@@ -50,6 +50,9 @@ class Rack:
         parser.add_argument('--dataset', default='/home/vsfg/data')
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         parser.add_argument('--resume', default='')
+        parser.add_argument('--save_all', default=0, type=int,
+                            help='If 0, will save only weigths of the last testing step.'
+                                 'If 1, will save the weights of all testing steps.')
 
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
@@ -319,7 +322,7 @@ class Rack:
                     elapsed = tb - ta
                     print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, IoU : {:.3f}, Duration:{:.4f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
-                                  acc_meter[model_name].value()[0],iou_meter[model_name].value()[0],
+                                  acc_meter[model_name].value()[0], iou_meter[model_name].value()[0],
                                   elapsed))
                     ta = tb
 
@@ -349,10 +352,14 @@ class Rack:
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
-                torch.save(
-                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                     'optimizer': conf['optimizer'].state_dict()},
-                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
+                if self.args.save_all == 1:
+                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                else:
+                    file_name = 'model.pth.tar'
+
+                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                            'optimizer': conf['optimizer'].state_dict()},
+                           os.path.join(conf['res_dir'], subdir, file_name))
 
         elif epoch + 1 == self.args.epochs:
             test_metrics, per_class, conf_m = self.final_test()
@@ -367,10 +374,14 @@ class Rack:
                     json.dump(per_class[model_name], outfile, indent=4)
                 pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
 
-                torch.save(
-                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                     'optimizer': conf['optimizer'].state_dict()},
-                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
+                if self.args.save_all == 1:
+                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                else:
+                    file_name = 'model.pth.tar'
+
+                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                            'optimizer': conf['optimizer'].state_dict()},
+                           os.path.join(conf['res_dir'], subdir, file_name))
         else:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
@@ -379,10 +390,6 @@ class Rack:
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
-                torch.save(
-                    {'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                     'optimizer': conf['optimizer'].state_dict()},
-                    os.path.join(conf['res_dir'], subdir, 'model.pth.tar'.format(epoch)))
 
     def test(self):  # TODO
         """
@@ -416,7 +423,8 @@ class Rack:
                 acc_meter[model_name].add(prediction[model_name], y)
                 loss_meter[model_name].add(loss[model_name].item())
 
-                iou = mIou(y.cpu().numpy(), (prediction[model_name].argmax(dim=1).cpu().numpy()), n_classes=self.args.num_classes)
+                iou = mIou(y.cpu().numpy(), (prediction[model_name].argmax(dim=1).cpu().numpy()),
+                           n_classes=self.args.num_classes)
 
                 iou_meter[model_name].add(iou)
 
