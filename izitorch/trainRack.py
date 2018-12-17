@@ -319,7 +319,7 @@ class Rack:
 
                 if self.args.grad_clip > 0:
                     for p in conf['model'].parameters():
-                        p.grad.data.clamp_(-args.grad_clip, args.grad_clip)
+                        p.grad.data.clamp_(-self.args.grad_clip, self.args.grad_clip)
 
                 conf['optimizer'].step()
 
