@@ -404,7 +404,7 @@ class Rack:
 
         for model_name, conf in self.model_configs.items():
             conf['model'] = conf['model'].eval()
-            print('[DEBUG] explicit mothafuka')
+            
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
