@@ -36,6 +36,18 @@ def random_rotation(a,angle=180,nrange=100):
 def rotate(angle):
     return lambda x: random_rotation(x,angle=angle)
 
+def random_sequence_rotation(a,angle=180,nrange=100):
+    """ Assumes H,W as last dimensions (channel first)
+    """
+    if not type(angle) == list:
+        angle = [i for i in range(-angle,angle,(2*angle)//nrange)]
+    alpha = np.random.choice(angle)
+
+    return ndimage.rotate(a,angle=alpha,axes=(-2,-1),reshape=False)
+
+def rotate_sequence(angle):
+    return lambda x: random_sequence_rotation(x,angle=angle)
+
 def add_jitter(P):
     sigma, clip = 0.01, 0.05  # https://github.com/charlesq34/pointnet/blob/master/provider.py#L74
     P = P + np.clip(sigma * np.random.randn(*P.shape), -1 * clip, clip).astype(np.float32)
