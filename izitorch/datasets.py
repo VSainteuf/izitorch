@@ -231,17 +231,25 @@ class Sequential_Scalar_Dataset_from_h5folder(data.Dataset):
 
 
 class Feature_Dataset_from_h5file(data.Dataset):
-    def __init__(self, file, labels='label_44class'):
+    def __init__(self, file, labels='label_44class',norm_file = None):
         super(Feature_Dataset_from_h5file, self).__init__()
         self.file = file
         self.labels = labels
         self.len = None
+        if norm_file is not None:
+            self.normalization = pkl.load(open(norm_file,'rb'))
+        else:
+            self.normalization = None
 
     def __getitem__(self, item):
         with h5py.File(self.file, 'r') as h5:
-            features = torch.from_numpy(h5['features'][item]).float()
-            label = torch.from_numpy(np.array(h5[self.labels][item], dtype=int))
-        return (features, label)
+            features = h5['features'][item]
+            label = h5[self.labels][item]
+
+        if self.normalization is not None:
+            features = (features - self.normalization[0]) / self.normalization[1]
+
+        return (torch.from_numpy(features).float(), torch.from_numpy(np.array(label, dtype=int)))
 
     def __len__(self):
         if self.len is None:
