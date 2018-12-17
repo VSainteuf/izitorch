@@ -11,12 +11,14 @@ from tqdm import tqdm
 
 class Sequential_Dataset_from_h5folder(data.Dataset):
 
-    def __init__(self, folder, labels='label_44class', extra_feature=None, im_transforms=None, extra_transform=None):
+    def __init__(self, folder, labels='label_44class', extra_feature=None, im_transforms=None, sequence_transform=None,
+                 extra_transform=None):
         super(Sequential_Dataset_from_h5folder, self).__init__()
         self.folder_path = folder
         self.labels = labels
         self.extra_feature = extra_feature
         self.im_transforms = im_transforms
+        self.sequence_transform = sequence_transform
         self.extra_transform = extra_transform
         self.dataset_list = np.sort([f for f in os.listdir(folder) if str(f).endswith('.h5')])
         with h5py.File(os.path.join(folder, self.dataset_list[0]), 'r') as h5:
@@ -33,6 +35,9 @@ class Sequential_Dataset_from_h5folder(data.Dataset):
             if self.im_transforms is not None:
                 for i in range(image_series.size()[0]):
                     image_series[i, :, :, :] = (self.im_transforms[i])(image_series[i, :, :, :])
+
+            if self.sequence_transform is not None:
+                image_series = (self.sequence_transform)(image_series)
 
             if self.extra_feature is not None:
                 if self.extra_feature == 'initial_dimensions':
@@ -179,11 +184,11 @@ class Sequential_Scalar_Dataset_from_h5folder(data.Dataset):
                     image_series[i, :, :, :] = (self.im_transforms[i])(image_series[i, :, :, :])
 
             image_series = image_series.astype(float)
-            image_series[np.where(image_series == 0)] = np.nan # compute features only on non zero pixels
+            image_series[np.where(image_series == 0)] = np.nan  # compute features only on non zero pixels
             means = np.nanmean(image_series, axis=(2, 3))
             stds = np.nanstd(image_series, axis=(2, 3))
-            means[np.isnan(means)] =0
-            stds[np.isnan(stds)] =0
+            means[np.isnan(means)] = 0
+            stds[np.isnan(stds)] = 0
 
             data = torch.from_numpy(np.concatenate([means, stds], axis=1)).float()
             labels = torch.from_numpy(np.array(h5[self.labels][local_index], dtype=int))
@@ -233,10 +238,10 @@ class Feature_Dataset_from_h5file(data.Dataset):
         self.len = None
 
     def __getitem__(self, item):
-        with h5py.File(self.file,'r') as h5:
+        with h5py.File(self.file, 'r') as h5:
             features = torch.from_numpy(h5['features'][item]).float()
             label = torch.from_numpy(np.array(h5[self.labels][item], dtype=int))
-        return (features,label)
+        return (features, label)
 
     def __len__(self):
         if self.len is None:
