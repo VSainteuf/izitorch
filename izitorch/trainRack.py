@@ -15,6 +15,8 @@ import os
 
 
 # TODO update docstring
+# TODO declare all atributes in init
+# TODO optimise redundant blocks
 
 
 class Rack:
@@ -56,6 +58,8 @@ class Rack:
 
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
+        parser.add_argument('--grad_clip', default=0, type=float,
+                            help='If nonzero, absolute balue of the gradients will be clipped at this value')
         parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
         parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
         parser.add_argument('--kfold', default=0, type=int,
@@ -312,6 +316,11 @@ class Rack:
 
                 conf['optimizer'].zero_grad()
                 loss[model_name].backward()
+
+                if self.args.grad_clip > 0:
+                    for p in conf['model'].parameters():
+                        p.grad.data.clamp_(-args.grad_clip, args.grad_clip)
+
                 conf['optimizer'].step()
 
                 if 'scheduler' in conf:
@@ -404,7 +413,7 @@ class Rack:
 
         for model_name, conf in self.model_configs.items():
             conf['model'] = conf['model'].eval()
-            
+
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
             iou_meter[model_name] = tnt.meter.AverageValueMeter()
