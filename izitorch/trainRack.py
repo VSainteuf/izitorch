@@ -282,13 +282,14 @@ class Rack:
         """
         acc_meter = {}
         loss_meter = {}
-        iou_meter = {}
+
+        y_true = []
+        y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
             conf['model'] = conf['model'].train()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
-            iou_meter[model_name] = tnt.meter.AverageValueMeter()
 
         ta = time.time()
 
@@ -300,20 +301,23 @@ class Rack:
                 for j, input in enumerate(x):
                     x[j] = input.to(self.device)
 
+            y_true.extend(list(map(int, y)))
             y = y.to(self.device)
 
             loss = {}
             outputs = {}
+            prediction = {}
+
             for model_name, conf in self.model_configs.items():
                 outputs[model_name] = conf['model'](x)
                 loss[model_name] = conf['criterion'](outputs[model_name], y.long())
+                prediction[model_name] = outputs[model_name].detach()
 
-                y_pred = outputs[model_name].detach()
-
-                acc_meter[model_name].add(y_pred, y)
-                iou_meter[model_name].add(
-                    mIou(y.cpu().numpy(), y_pred.argmax(dim=1).cpu().numpy(), self.args.num_classes))
+                acc_meter[model_name].add(prediction[model_name], y)
                 loss_meter[model_name].add(loss[model_name].item())
+
+                y_p = prediction[model_name].argmax(dim=1).cpu().numpy()
+                y_pred[model_name].extend(list(y_p))
 
                 conf['optimizer'].zero_grad()
                 loss[model_name].backward()
@@ -330,17 +334,18 @@ class Rack:
                 if (i + 1) % 100 == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, IoU : {:.3f}, Duration:{:.4f}'
+                    print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'
                           .format(model_name, i + 1, self.args.total_step, loss_meter[model_name].value()[0],
-                                  acc_meter[model_name].value()[0], iou_meter[model_name].value()[0],
+                                  acc_meter[model_name].value()[0],
                                   elapsed))
                     ta = tb
 
         metrics = {}
         for model_name in self.model_configs:
+            miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
             metrics[model_name] = {'loss': loss_meter[model_name].value()[0],
                                    'accuracy': acc_meter[model_name].value()[0],
-                                   'IoU': iou_meter[model_name].value()[0]}
+                                   'IoU': miou}
 
         return metrics
 
