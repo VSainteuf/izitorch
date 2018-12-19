@@ -10,7 +10,7 @@ def mIou(y_true, y_pred, n_classes):
     """
     iou = 0
     n_observed = n_classes
-    for i in range(n_observed):
+    for i in range(n_classes):
         y_t = (np.array(y_true) == i).astype(int)
         y_p = (np.array(y_pred) == i).astype(int)
 
