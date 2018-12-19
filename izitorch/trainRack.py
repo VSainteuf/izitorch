@@ -17,6 +17,7 @@ import os
 # TODO update docstring
 # TODO declare all atributes in init
 # TODO optimise redundant blocks
+# TODO correct elapsed time display
 
 
 class Rack:
@@ -237,6 +238,7 @@ class Rack:
         loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
+
         for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
 
             if nfold == 1:
@@ -352,25 +354,7 @@ class Rack:
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
-        if epoch % self.args.test_step == 0:
-            test_metrics = self.test()
-            for model_name, conf in self.model_configs.items():
-                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
-                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
-                                                                                       self.args.epochs))
-
-                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile, indent=4)
-                if self.args.save_all == 1:
-                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
-                else:
-                    file_name = 'model.pth.tar'
-
-                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                            'optimizer': conf['optimizer'].state_dict()},
-                           os.path.join(conf['res_dir'], subdir, file_name))
-
-        elif epoch + 1 == self.args.epochs:
+        if epoch + 1 == self.args.epochs:
             test_metrics, per_class, conf_m = self.final_test()
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
@@ -391,6 +375,25 @@ class Rack:
                 torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                             'optimizer': conf['optimizer'].state_dict()},
                            os.path.join(conf['res_dir'], subdir, file_name))
+
+        elif epoch % self.args.test_step == 0:
+            test_metrics = self.test()
+            for model_name, conf in self.model_configs.items():
+                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
+                                                                                       self.args.epochs))
+
+                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
+                    json.dump(self.stats[model_name], outfile, indent=4)
+                if self.args.save_all == 1:
+                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                else:
+                    file_name = 'model.pth.tar'
+
+                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                            'optimizer': conf['optimizer'].state_dict()},
+                           os.path.join(conf['res_dir'], subdir, file_name))
+
         else:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
