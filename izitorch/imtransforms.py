@@ -43,7 +43,7 @@ def random_sequence_rotation(a,angle=180,nrange=100):
         angle = [i for i in range(-angle,angle,(2*angle)//nrange)]
     alpha = np.random.choice(angle)
 
-    return ndimage.rotate(a,angle=alpha,axes=(-2,-1),reshape=False)
+    return ndimage.rotate(a,angle=alpha,axes=(-2,-1),reshape=False,order=1)
 
 def rotate_sequence(angle):
     return lambda x: random_sequence_rotation(x,angle=angle)
