@@ -238,7 +238,6 @@ class Rack:
         loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
-
         for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
 
             if nfold == 1:
@@ -412,16 +411,20 @@ class Rack:
 
         acc_meter = {}
         loss_meter = {}
-        iou_meter = {}
+
+        y_true = []
+        y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
             conf['model'] = conf['model'].eval()
 
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
-            iou_meter[model_name] = tnt.meter.AverageValueMeter()
 
         for (x, y) in self.test_loader:
+
+            y_true.extend(list(map(int, y)))
+
             x = x.to(self.device)
             y = y.to(self.device)
 
@@ -435,16 +438,14 @@ class Rack:
                 acc_meter[model_name].add(prediction[model_name], y)
                 loss_meter[model_name].add(loss[model_name].item())
 
-                iou = mIou(y.cpu().numpy(), (prediction[model_name].argmax(dim=1).cpu().numpy()),
-                           n_classes=self.args.num_classes)
-
-                iou_meter[model_name].add(iou)
+                y_p = prediction[model_name].argmax(dim=1).cpu().numpy()
+                y_pred[model_name].extend(list(y_p))
 
         test_metrics = {}
         for model_name in self.model_configs:
             acc = acc_meter[model_name].value()[0]
             loss = loss_meter[model_name].value()[0]
-            miou = iou_meter[model_name].value()[0]
+            miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
@@ -457,7 +458,6 @@ class Rack:
     def final_test(self):
         acc_meter = {}
         loss_meter = {}
-        iou_meter = {}
 
         y_true = []
         y_pred = {m: [] for m in self.model_configs}
@@ -466,7 +466,6 @@ class Rack:
             conf['model'] = conf['model'].eval()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
-            iou_meter[model_name] = tnt.meter.AverageValueMeter()
 
         for (x, y) in self.test_loader:
             y_true.extend(list(map(int, y)))
@@ -485,9 +484,6 @@ class Rack:
                 y_p = prediction.argmax(dim=1).cpu().numpy()
                 y_pred[model_name].extend(list(y_p))
 
-                iou = mIou(y.cpu().numpy(), y_p, n_classes=self.args.num_classes)
-                iou_meter[model_name].add(iou)
-
         test_metrics = {}
         per_class = {}
         conf_m = {}
@@ -495,7 +491,7 @@ class Rack:
         for model_name in self.model_configs:
             acc = acc_meter[model_name].value()[0]
             loss = loss_meter[model_name].value()[0]
-            miou = iou_meter[model_name].value()[0]
+            miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
 
             per_class[model_name] = per_class_performance(y_true, y_pred[model_name])
             conf_m[model_name] = conf_mat(y_true, y_pred[model_name])
