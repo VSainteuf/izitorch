@@ -12,7 +12,7 @@ from tqdm import tqdm
 class Sequential_Dataset_from_h5folder(data.Dataset):
 
     def __init__(self, folder, labels='label_44class', extra_feature=None, im_transforms=None, sequence_transform=None,
-                 extra_transform=None):
+                 extra_transform=None, permute=False):
         super(Sequential_Dataset_from_h5folder, self).__init__()
         self.folder_path = folder
         self.labels = labels
@@ -20,6 +20,7 @@ class Sequential_Dataset_from_h5folder(data.Dataset):
         self.im_transforms = im_transforms
         self.sequence_transform = sequence_transform
         self.extra_transform = extra_transform
+        self.permute = permute
         self.dataset_list = np.sort([f for f in os.listdir(folder) if str(f).endswith('.h5')])
         with h5py.File(os.path.join(folder, self.dataset_list[0]), 'r') as h5:
             self.chunksize = h5['images'].shape[0]
@@ -36,11 +37,19 @@ class Sequential_Dataset_from_h5folder(data.Dataset):
         if self.sequence_transform is not None:
             image_series = (self.sequence_transform)(image_series)
 
-
         image_series = torch.from_numpy(image_series).float()
         if self.im_transforms is not None:
             for i in range(image_series.size()[0]):
                 image_series[i, :, :, :] = (self.im_transforms[i])(image_series[i, :, :, :])
+
+        if self.permute:
+            time_indices = list(range(image_series.size()[0]))
+            np.random.shuffle(time_indices)
+            permuted = torch.zeros(image_series.size())
+            for i in range(image_series.size()[0]):
+                permuted[i, :, :, :] = image_series[time_indices[i], :, :, :]
+
+            image_series = permuted
 
         if self.extra_feature is not None:
             if self.extra_feature == 'initial_dimensions':
@@ -161,13 +170,14 @@ class Unitemporal_Dataset_from_h5folder(data.Dataset):
 
 
 class Feature_Dataset_from_h5file(data.Dataset):
-    def __init__(self, file, labels='label_44class',norm_file = None):
+    def __init__(self, file, labels='label_44class', norm_file=None, permute=False):
         super(Feature_Dataset_from_h5file, self).__init__()
         self.file = file
         self.labels = labels
         self.len = None
+        self.permute = permute
         if norm_file is not None:
-            self.normalization = pkl.load(open(norm_file,'rb'))
+            self.normalization = pkl.load(open(norm_file, 'rb'))
         else:
             self.normalization = None
 
@@ -178,6 +188,11 @@ class Feature_Dataset_from_h5file(data.Dataset):
 
         if self.normalization is not None:
             features = (features - self.normalization[0]) / self.normalization[1]
+
+        if self.permute:
+            time_indices = list(range(features.shape[0]))
+            np.random.shuffle(time_indices)
+            features = np.array([features[t] for t in time_indices])
 
         return (torch.from_numpy(features).float(), torch.from_numpy(np.array(label, dtype=int)))
 
