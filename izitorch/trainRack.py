@@ -210,7 +210,8 @@ class Rack:
 
             if self.args.validation:
                 validation_indices = np.random.choice(train_indices, size=self.ntest, replace=False)
-                train_indices = [t for t in train_indices if t not in validation_indices] # TODO Find a less expensive way to do this
+                train_indices = [t for t in train_indices if
+                                 t not in validation_indices]  # TODO Find a less expensive way to do this
 
                 record.append((train_indices, validation_indices, test_indices))
 
@@ -222,8 +223,8 @@ class Rack:
                                                sampler=train_sampler,
                                                num_workers=self.args.num_workers, pin_memory=pm)
                 validation_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
-                                               sampler=validation_sampler,
-                                               num_workers=self.args.num_workers, pin_memory=pm)
+                                                    sampler=validation_sampler,
+                                                    num_workers=self.args.num_workers, pin_memory=pm)
                 test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
                                               sampler=test_sampler,
                                               num_workers=self.args.num_workers, pin_memory=pm)
@@ -282,11 +283,11 @@ class Rack:
 
             self._models_to_device()
 
-            for epoch in range(self.args.epochs):
+            for self.current_epoch in range(self.args.epochs):
                 t0 = time.time()
 
                 train_metrics = self.train_epoch()
-                self.checkpoint_epoch(epoch, train_metrics, subdir=subdir)
+                self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
                 t1 = time.time()
 
@@ -295,8 +296,10 @@ class Rack:
 
     def _init_trainlogs(self):
         self.stats = {}
+        self.best_performance = {}
         for model_name, conf in self.model_configs.items():
             self.stats[model_name] = {}
+            self.best_performance[model_name] = {'epoch': 0, 'IoU': 0}
 
     def _models_to_device(self):
         for model_name, conf in self.model_configs.items():
@@ -385,30 +388,16 @@ class Rack:
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
-        if epoch + 1 == self.args.epochs:
-            test_metrics, per_class, conf_m = self.final_test()
-            for model_name, conf in self.model_configs.items():
-                self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
-                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
-                                                                                       self.args.epochs))
 
-                with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
-                    json.dump(self.stats[model_name], outfile, indent=4)
-                with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
-                    json.dump(per_class[model_name], outfile, indent=4)
-                pkl.dump(conf_m[model_name], open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
+        if epoch % self.args.test_step == 0 or epoch + 1 == self.args.epochs:
 
-                if self.args.save_all == 1:
-                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
-                else:
-                    file_name = 'model.pth.tar'
+            if epoch + 1 == self.args.epochs:
+                test_metrics, (y_true, y_pred) = self.test(return_y=True)
+                if self.args.validation:
+                    y_pred = self.get_best_predictions(subdir=subdir)
+            else:
+                test_metrics = self.test()
 
-                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                            'optimizer': conf['optimizer'].state_dict()},
-                           os.path.join(conf['res_dir'], subdir, file_name))
-
-        elif epoch % self.args.test_step == 0:
-            test_metrics = self.test()
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
@@ -425,6 +414,11 @@ class Rack:
                             'optimizer': conf['optimizer'].state_dict()},
                            os.path.join(conf['res_dir'], subdir, file_name))
 
+                if epoch + 1 == self.args.epochs:
+                    per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
+                    with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
+                        json.dump(per_class, outfile, indent=4)
+                    pkl.dump(conf_m, open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
         else:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
@@ -434,9 +428,9 @@ class Rack:
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
 
-    def test(self):  # TODO
+    def test(self, return_y=False):  # TODO
         """
-        Tests the model on the test set and returns the performance metrics as a dictionnary
+        Tests the model on the test or validation set and returns the performance metrics as a dictionnary
         """
         # TODO generalise method and just give a list of metrics as rack parameter
         print('Testing models . . .')
@@ -453,7 +447,9 @@ class Rack:
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
 
-        for (x, y) in self.test_loader:
+        loader = self.validation_loader if self.args.validation else self.test_loader
+
+        for (x, y) in loader:
 
             y_true.extend(list(map(int, y)))
 
@@ -485,7 +481,18 @@ class Rack:
             print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
             print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
 
-        return test_metrics
+            if self.args.validation:
+                if test_metrics[model_name]['test_IoU'] > self.best_performance[model_name]['IoU']:
+                    print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
+                    self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
+                    self.best_performance[model_name]['epoch'] = self.current_epoch + 1
+
+                test_metrics[model_name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou}
+
+        if return_y:
+            return test_metrics, (y_true, y_pred)
+        else:
+            return test_metrics
 
     def final_test(self):
         acc_meter = {}
@@ -495,6 +502,9 @@ class Rack:
         y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
+
+            if self.args.validation:
+                print('[TESTING - {}')
             conf['model'] = conf['model'].eval()
             acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[model_name] = tnt.meter.AverageValueMeter()
@@ -535,3 +545,31 @@ class Rack:
             print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
 
         return test_metrics, per_class, conf_m
+
+    def final_performance(self, y_true, y_pred):
+
+        per_class = per_class_performance(y_true, y_pred)
+        conf_m = conf_mat(y_true, y_pred)
+
+        return per_class, conf_m
+
+    def get_best_predictions(self, subdir=''):
+
+        y_pred = {m: [] for m in self.model_configs}
+
+        for model_name, conf in self.model_configs.items():
+            best_epoch = self.best_performance[model_name]['epoch']
+            checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, 'model_epoch{}.pth.tar'.format(
+                best_epoch)))  ## TODO if validation then save_all
+            conf['model'].load_state_dict(checkpoint['state_dict'])
+            conf['model'].eval()
+
+        for (x, y) in self.test_loader:
+
+            x = x.to(self.device)
+
+            for model_name, conf in self.model_configs.items():
+                with torch.no_grad():
+                    prediction = conf['model'](x)
+                    y_pred[model_name].extend(prediction.argmax(dim=1).cpu().numpy())
+        return y_pred
