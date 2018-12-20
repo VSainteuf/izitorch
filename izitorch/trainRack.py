@@ -56,7 +56,9 @@ class Rack:
         parser.add_argument('--save_all', default=0, type=int,
                             help='If 0, will save only weigths of the last testing step.'
                                  'If 1, will save the weights of all testing steps.')
-
+        parser.add_argument('--validation', default=0, type=int,
+                            help='If set to 1 each epoch will be tested on a validation set,'
+                                 ' and the best epoch will be used for the final test on a separate test set')
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
@@ -187,15 +189,17 @@ class Rack:
         if self.args.kfold != 0:
             kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
             indices_seq = list(kf.split(list(range(len(indices)))))
-            print(
-                '[DATASET] Train: {} samples, Test : {} samples'.format(len(indices_seq[0][0]), len(indices_seq[0][1])))
+            self.ntrain = len(indices_seq[0][0])
+            self.ntest = len(indices_seq[0][1])
             print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
 
         else:
-            ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
-            ntest = len(self.train_dataset) - ntrain
-            print('[DATASET] Train: {} samples, Test : {} samples'.format(ntrain, ntest))
-            indices_seq = [(list(range(ntrain)), list(range(ntrain, ntrain + ntest, 1)))]
+            self.ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
+            self.ntest = len(self.train_dataset) - self.ntrain
+            indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
+
+            ####### TODO
+            print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
 
         loader_seq = []
 
@@ -204,20 +208,43 @@ class Rack:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
 
-            record.append((train_indices, test_indices))
+            if self.args.validation:
+                validation_indices = np.random.choice(train_indices, size=self.ntest, replace=False)
+                train_indices = [t for t in train_indices if t not in validation_indices] # TODO Find a less expensive way to do this
 
-            train_sampler = data.sampler.SubsetRandomSampler(train_indices)
-            test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+                record.append((train_indices, validation_indices, test_indices))
 
-            train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
-                                           sampler=train_sampler,
-                                           num_workers=self.args.num_workers, pin_memory=pm)
-            test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
-                                          sampler=test_sampler,
-                                          num_workers=self.args.num_workers, pin_memory=pm)
-            loader_seq.append((train_loader, test_loader))
+                train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                validation_sampler = data.sampler.SubsetRandomSampler(validation_indices)
+                test_sampler = data.sampler.SubsetRandomSampler(test_indices)
 
-        pkl.dump(record, open(os.path.join(self.args.res_dir, 'TrainTest_indices.pkl'), 'wb'))
+                train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                                               sampler=train_sampler,
+                                               num_workers=self.args.num_workers, pin_memory=pm)
+                validation_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                                               sampler=validation_sampler,
+                                               num_workers=self.args.num_workers, pin_memory=pm)
+                test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                                              sampler=test_sampler,
+                                              num_workers=self.args.num_workers, pin_memory=pm)
+                loader_seq.append((train_loader, validation_loader, test_loader))
+
+            else:
+
+                record.append((train_indices, test_indices))
+
+                train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+                train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                                               sampler=train_sampler,
+                                               num_workers=self.args.num_workers, pin_memory=pm)
+                test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                                              sampler=test_sampler,
+                                              num_workers=self.args.num_workers, pin_memory=pm)
+                loader_seq.append((train_loader, test_loader))
+
+        pkl.dump(record, open(os.path.join(self.args.res_dir, 'Dataset_split.pkl'), 'wb'))
 
         return loader_seq
 
