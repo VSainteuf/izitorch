@@ -94,6 +94,12 @@ class Rack:
     def print_args(self):
         print(self.args)
 
+    def _check_args_consistency(self):
+        if self.args.validation and (self.args.test_step ==0 or self.args.save_all==0):
+            print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
+            self.args.test_step = 1
+            self.args.save_all = 1
+
     ####### Methods for setting the specific elements of the training rack
 
     def set_device(self, device_name=None):
@@ -261,12 +267,18 @@ class Rack:
         the model is applied to the test dataset every args.test_step epochs
         """
 
+        self._check_args_consistency()
         self._prepare_output()
 
         loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
-        for i, (self.train_loader, self.test_loader) in enumerate(loader_seq):
+        for i, loaders in enumerate(loader_seq):
+
+            if self.args.validation:
+                self.train_loader, self.validation_loader, self.test_loader = loaders
+            else:
+                self.train_loader, self.test_loader = loaders
 
             if nfold == 1:
                 print('[TRAINING CONFIGURATION] Starting single training ')
@@ -393,8 +405,6 @@ class Rack:
 
             if epoch + 1 == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self.test(return_y=True)
-                if self.args.validation:
-                    y_pred = self.get_best_predictions(subdir=subdir)
             else:
                 test_metrics = self.test()
 
@@ -414,7 +424,11 @@ class Rack:
                             'optimizer': conf['optimizer'].state_dict()},
                            os.path.join(conf['res_dir'], subdir, file_name))
 
-                if epoch + 1 == self.args.epochs:
+            if epoch + 1 == self.args.epochs:
+
+                if self.args.validation:
+                    y_true, y_pred = self.get_best_predictions(subdir=subdir)
+                for model_name, conf in self.model_configs.items():
                     per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
@@ -555,6 +569,7 @@ class Rack:
 
     def get_best_predictions(self, subdir=''):
 
+        y_true = []
         y_pred = {m: [] for m in self.model_configs}
 
         for model_name, conf in self.model_configs.items():
@@ -566,10 +581,11 @@ class Rack:
 
         for (x, y) in self.test_loader:
 
+            y_true.extend(list(map(int, y)))
             x = x.to(self.device)
 
             for model_name, conf in self.model_configs.items():
                 with torch.no_grad():
                     prediction = conf['model'](x)
                     y_pred[model_name].extend(prediction.argmax(dim=1).cpu().numpy())
-        return y_pred
+        return y_true, y_pred
