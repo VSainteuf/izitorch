@@ -99,6 +99,9 @@ class Rack:
             print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
             self.args.test_step = 1
             self.args.save_all = 1
+        if self.args.kfold < 3 and self.args.validation:
+            print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
+            self.args.kfold = 3
 
     ####### Methods for setting the specific elements of the training rack
 
