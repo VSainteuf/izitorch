@@ -40,8 +40,8 @@ def space_shuffle(a):
     """Randomly shuffles the pixels of an image
     input: image tensor CxHxW (channel first)"""
 
-    out = a[:, np.random.permutation(range(a.shape[0])), :]
-    out = out[:, :, np.random.permutation(range(out.shape[1]))]
+    out = a[:, np.random.permutation(range(a.shape[1])), :]
+    out = out[:, :, np.random.permutation(range(out.shape[2]))]
 
     return out
 
