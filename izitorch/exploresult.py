@@ -26,13 +26,16 @@ class Fold:
         with open(self.trainlog_path, 'r') as src:
             t = json.loads(src.read())
         df = pd.DataFrame(t).transpose()
-        df['test_IoU'] = df['test_IoU'] * 100
-        df['IoU'] = df['IoU']*100
+        for c in [c for c in df.columns if 'IoU' in c]:
+            df[c] = df[c] * 100
 
         return df
 
     def _is_kfold(self):
         return 'FOLD_' in self.folder
+
+    def _with_val(self):
+        return bool(self.conf['validation'])
 
     def _parse_conf(self):
         if self._is_kfold():
