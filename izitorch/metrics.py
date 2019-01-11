@@ -38,8 +38,8 @@ def per_class_IoU(y_true, y_pred, label):
         return inter / union
 
 
-def per_class_performance(y_true, y_pred):
-    perf = classification_report(y_true, y_pred, digits=3, output_dict=True)
+def per_class_performance(y_true, y_pred, n_classes):
+    perf = classification_report(y_true, y_pred, digits=3, output_dict=True, labels=list(range(n_classes)))
 
     for label, d in perf.items():
         if label not in ['micro avg', 'macro avg', 'weighted avg']:
@@ -47,5 +47,6 @@ def per_class_performance(y_true, y_pred):
 
     return perf
 
-def conf_mat(y_true,y_pred):
-    return confusion_matrix(y_true,y_pred)
+
+def conf_mat(y_true, y_pred):
+    return confusion_matrix(y_true, y_pred, labels=list(range(n_classes)))

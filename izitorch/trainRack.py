@@ -51,6 +51,9 @@ class Rack:
         parser = argparse.ArgumentParser()
 
         parser.add_argument('--dataset', default='/home/vsfg/data')
+        parser.add_argument('--num_classes', default=None, type=int,
+                            help='number of classes in case of classification problem')
+
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         parser.add_argument('--resume', default='')
         parser.add_argument('--save_all', default=0, type=int,
@@ -95,7 +98,7 @@ class Rack:
         print(self.args)
 
     def _check_args_consistency(self):
-        if self.args.validation and (self.args.test_step ==0 or self.args.save_all==0):
+        if self.args.validation and (self.args.test_step == 0 or self.args.save_all == 0):
             print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
             self.args.test_step = 1
             self.args.save_all = 1
@@ -432,7 +435,7 @@ class Rack:
                 if self.args.validation:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
                 for model_name, conf in self.model_configs.items():
-                    per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
+                    per_class, conf_m = self.final_performance(y_true, y_pred[model_name],self.args.num_classes)
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
@@ -552,8 +555,8 @@ class Rack:
             loss = loss_meter[model_name].value()[0]
             miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
 
-            per_class[model_name] = per_class_performance(y_true, y_pred[model_name])
-            conf_m[model_name] = conf_mat(y_true, y_pred[model_name])
+            per_class[model_name] = per_class_performance(y_true, y_pred[model_name], self.args.num_classes)
+            conf_m[model_name] = conf_mat(y_true, y_pred[model_name],self.args.num_classes)
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
@@ -565,8 +568,8 @@ class Rack:
 
     def final_performance(self, y_true, y_pred):
 
-        per_class = per_class_performance(y_true, y_pred)
-        conf_m = conf_mat(y_true, y_pred)
+        per_class = per_class_performance(y_true, y_pred,self.args.num_classes)
+        conf_m = conf_mat(y_true, y_pred,self.args.num_classes)
 
         return per_class, conf_m
 
