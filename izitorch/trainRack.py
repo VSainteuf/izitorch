@@ -435,7 +435,7 @@ class Rack:
                 if self.args.validation:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
                 for model_name, conf in self.model_configs.items():
-                    per_class, conf_m = self.final_performance(y_true, y_pred[model_name],self.args.num_classes)
+                    per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
