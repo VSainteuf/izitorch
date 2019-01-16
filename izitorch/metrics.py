@@ -48,5 +48,5 @@ def per_class_performance(y_true, y_pred, n_classes):
     return perf
 
 
-def conf_mat(y_true, y_pred):
+def conf_mat(y_true, y_pred, n_classes):
     return confusion_matrix(y_true, y_pred, labels=list(range(n_classes)))
