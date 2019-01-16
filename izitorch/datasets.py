@@ -169,6 +169,76 @@ class Unitemporal_Dataset_from_h5folder(data.Dataset):
             pkl.dump(stats, open(out_path, 'wb'))
 
 
+class Unitemporal_Dataset_withIndex_from_h5folder(data.Dataset):
+
+    def __init__(self, folder, date_number=12, labels='label_44class', im_transform=None,
+                 extra_transform=None, extra_indexes=[]):
+        super(Unitemporal_Dataset_withIndex_from_h5folder, self).__init__()
+        self.folder_path = folder
+        self.date_number = date_number
+        self.labels = labels
+        self.im_transform = im_transform
+        self.extra_transform = extra_transform
+        self.extra_indexes = extra_indexes
+
+        self.dataset_list = np.sort([f for f in os.listdir(folder) if str(f).endswith('.h5')])
+        with h5py.File(os.path.join(folder, self.dataset_list[0]), 'r') as h5:
+            self.chunksize = h5['images'].shape[0]
+        self.len = None
+
+    def __getitem__(self, index):
+        dataset_number = index // self.chunksize
+        local_index = index % self.chunksize
+
+        with h5py.File(os.path.join(self.folder_path, self.dataset_list[dataset_number]), 'r') as h5:
+
+            images = (torch.from_numpy(h5['images'][local_index, self.date_number, :, :, :]).float())
+            if self.im_transform is not None:
+                images = (self.im_transform)(images)
+
+            if self.extra_indexes:
+                new_shape = list(images.size())
+                new_shape[0] += len(self.extra_indexes)
+
+                data = torch.zeros(new_shape)
+                data[:images.size()[0]] = images
+
+                for i, index_function in enumerate(self.extra_indexes):
+                    data[images.size()[0] + i] = index_function(images)
+
+            else:
+                data = images
+
+            labels = torch.from_numpy(np.array(h5[self.labels][local_index], dtype=int))
+        return data, labels
+
+    def __len__(self):
+        if self.len is None:
+            l = 0
+            for d in self.dataset_list:
+                with h5py.File(os.path.join(self.folder_path, d), 'r') as h5:
+                    l += h5['images'].shape[0]
+            self.len = l
+
+        return self.len
+
+    def compute_stats(self, out_path=None):
+        dl = data.DataLoader(self, batch_size=10000, shuffle=False, num_workers=6)
+
+        means = []
+        stds = []
+
+        for x, y in tqdm(dl):
+            means.append(np.mean(x.numpy(), axis=(0, 2, 3)))
+            stds.append(np.std(x.numpy(), axis=(0, 2, 3)))
+        self.means = np.mean(means, axis=0)
+        self.stds = np.mean(stds, axis=0)
+
+        if out_path is not None:
+            stats = (self.means, self.stds)
+            pkl.dump(stats, open(out_path, 'wb'))
+
+
 class Feature_Dataset_from_h5file(data.Dataset):
     def __init__(self, file, labels='label_44class', norm_file=None, permute=False):
         super(Feature_Dataset_from_h5file, self).__init__()
