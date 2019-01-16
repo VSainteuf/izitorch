@@ -4,17 +4,18 @@ from torch.utils import data
 
 from izitorch import trainRack
 
+
 class ExModel(nn.Module):
-    def __init__(self,hs,ins,nc):
-        super(ExModel,self).__init__()
-        self.rec = nn.GRU(input_size=ins,hidden_size=hs,batch_first=True)
-        self.cla = nn.Linear(hs,nc)
+    def __init__(self, hs, ins, nc):
+        super(ExModel, self).__init__()
+        self.rec = nn.GRU(input_size=ins, hidden_size=hs, batch_first=True)
+        self.cla = nn.Linear(hs, nc)
 
     def forward(self, input, hx=None):
         out, hn = self.rec(input)
-        return nn.Softmax(dim=-1)(self.cla(hn[-1,:,:]))
+        return nn.Softmax(dim=-1)(self.cla(hn[-1, :, :]))
 
-model = ExModel(20, 10, 2)
+
 
 
 class RandDataset(data.Dataset):
@@ -23,7 +24,7 @@ class RandDataset(data.Dataset):
         self.nsamp = nsamp
         self.nfeat = nfeat
         self.data = torch.randn(nsamp, seqlen, nfeat)
-        self.target = torch.randint(nclass,(nsamp,))
+        self.target = torch.randint(nclass, (nsamp,))
 
     def __getitem__(self, item):
         return self.data[item, :, :], self.target[item].long()
@@ -32,16 +33,8 @@ class RandDataset(data.Dataset):
         return self.nsamp
 
 
-arg_dict = {'num_classes': {'default': 2, 'type': int}}
+arg_dict = {'hidden_size': {'default': 64, 'type': int}}
 
-m1 = ExModel(50, 10, 2)
-conf = {
-    'model1':{
-        'model': m1,
-        'criterion': nn.CrossEntropyLoss(),
-        'optimizer': torch.optim.Adam(m1.parameters())
-    }
-}
 
 
 if __name__ == '__main__':
@@ -49,6 +42,15 @@ if __name__ == '__main__':
 
     rack.add_arguments(arg_dict)
     rack.parse_args()
+
+    m1 = ExModel(rack.args.hidden_size, 10, 2)
+    conf = {
+        'model1': {
+            'model': m1,
+            'criterion': nn.CrossEntropyLoss(),
+            'optimizer': torch.optim.Adam(m1.parameters())
+        }
+    }
 
     rack.add_model_configs(conf)
 
