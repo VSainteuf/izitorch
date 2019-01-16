@@ -220,9 +220,7 @@ class Rack:
             test_indices = [indices[i] for i in test]
 
             if self.args.validation:
-                validation_indices = np.random.choice(train_indices, size=self.ntest, replace=False)
-                train_indices = [t for t in train_indices if
-                                 t not in validation_indices]  # TODO Find a less expensive way to do this
+                validation_indices = train_indices[-self.ntest:]
 
                 record.append((train_indices, validation_indices, test_indices))
 
