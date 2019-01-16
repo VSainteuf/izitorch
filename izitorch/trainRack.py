@@ -12,6 +12,7 @@ import time
 import json
 import pickle as pkl
 import os
+import sys
 
 
 # TODO update docstring
@@ -65,6 +66,8 @@ class Rack:
         parser.add_argument('--validation', default=0, type=int,
                             help='If set to 1 each epoch will be tested on a validation set,'
                                  ' and the best epoch will be used for the final test on a separate test set')
+        parser.add_argument('--metric_best', default='IoU', type=str,
+                            help='metric used to rank the epoch performances, chose between acc / loss / IoU(default)')
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
@@ -322,7 +325,7 @@ class Rack:
         self.best_performance = {}
         for model_name, conf in self.model_configs.items():
             self.stats[model_name] = {}
-            self.best_performance[model_name] = {'epoch': 0, 'IoU': 0}
+            self.best_performance[model_name] = {'epoch': 0, 'IoU': 0, 'acc': 0, 'loss': sys.float_info.max}
 
     def _models_to_device(self):
         for model_name, conf in self.model_configs.items():
@@ -509,10 +512,24 @@ class Rack:
             print('[{}] {} Loss: {:.4f}, Acc : {:.2f}, IoU {:.4f}'.format(model_name, mode, loss, acc, miou))
 
             if self.args.validation:
-                if test_metrics[model_name]['test_IoU'] > self.best_performance[model_name]['IoU']:
-                    print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
-                    self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
-                    self.best_performance[model_name]['epoch'] = self.current_epoch + 1
+                metric = [m for m in test_metrics[model_name].keys() if self.args.metric_best in m][0]
+
+                if self.args.metric_best == 'loss':
+                    if test_metrics[model_name][metric] < self.best_performance[model_name][self.args.metric_best]:
+                        print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
+                        self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
+                        self.best_performance[model_name]['acc'] = test_metrics[model_name]['test_accuracy']
+                        self.best_performance[model_name]['loss'] = test_metrics[model_name]['test_loss']
+
+                        self.best_performance[model_name]['epoch'] = self.current_epoch + 1
+                else:
+                    if test_metrics[model_name][metric] > self.best_performance[model_name][self.args.metric_best]:
+                        print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
+                        self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
+                        self.best_performance[model_name]['acc'] = test_metrics[model_name]['test_accuracy']
+                        self.best_performance[model_name]['loss'] = test_metrics[model_name]['test_loss']
+
+                        self.best_performance[model_name]['epoch'] = self.current_epoch + 1
 
                 test_metrics[model_name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou}
 
