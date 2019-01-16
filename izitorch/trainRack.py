@@ -221,6 +221,7 @@ class Rack:
 
             if self.args.validation:
                 validation_indices = train_indices[-self.ntest:]
+                train_indices = train_indices[:-self.ntest]
 
                 record.append((train_indices, validation_indices, test_indices))
 
@@ -231,7 +232,7 @@ class Rack:
                 train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
                                                sampler=train_sampler,
                                                num_workers=self.args.num_workers, pin_memory=pm)
-                validation_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                validation_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
                                                     sampler=validation_sampler,
                                                     num_workers=self.args.num_workers, pin_memory=pm)
                 test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
