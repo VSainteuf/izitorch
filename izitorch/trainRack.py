@@ -437,7 +437,6 @@ class Rack:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
 
                 for model_name, conf in self.model_configs.items():
-
                     per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
@@ -501,9 +500,8 @@ class Rack:
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
-            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
-            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
+            mode = 'Test' if self.args.validation == 0 else 'Val'
+            print('[{}] {} Loss: {:.4f}, Acc : {:.2f}, IoU {:.4f}'.format(model_name, mode, loss, acc, miou))
 
             if self.args.validation:
                 if test_metrics[model_name]['test_IoU'] > self.best_performance[model_name]['IoU']:
@@ -517,7 +515,6 @@ class Rack:
             return test_metrics, (y_true, y_pred)
         else:
             return test_metrics
-
 
     def final_performance(self, y_true, y_pred):
 
