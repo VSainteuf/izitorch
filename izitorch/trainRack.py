@@ -431,13 +431,20 @@ class Rack:
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
 
-                if self.args.save_all == 1:
-                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                if self.args.save_best == 1 :
+                    if self.best_performance[model_name]['epoch'] == self.current_epoch + 1:
+                        file_name = 'model.pth.tar'
+                        torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                                    'optimizer': conf['optimizer'].state_dict()},
+                                   os.path.join(conf['res_dir'], subdir, file_name))
                 else:
-                    file_name = 'model.pth.tar'
-                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                            'optimizer': conf['optimizer'].state_dict()},
-                           os.path.join(conf['res_dir'], subdir, file_name))
+                    if self.args.save_all == 1:
+                        file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                    else:
+                        file_name = 'model.pth.tar'
+                    torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                                'optimizer': conf['optimizer'].state_dict()},
+                               os.path.join(conf['res_dir'], subdir, file_name))
 
             if epoch + 1 == self.args.epochs:
 
