@@ -55,7 +55,7 @@ class Rack:
                             help='number of classes in case of classification problem')
 
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
-        parser.add_argument('--resume', default='')
+        parser.add_argument('--resume', default='')  # TODO implement resuming a training
         parser.add_argument('--save_all', default=0, type=int,
                             help='If 0, will save only weigths of the last testing step.'
                                  'If 1, will save the weights of all testing steps.')
@@ -66,11 +66,11 @@ class Rack:
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
                             help='If nonzero, absolute balue of the gradients will be clipped at this value')
-        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
-        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
+        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
+        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split (when no k-fold)')
         parser.add_argument('--kfold', default=0, type=int,
                             help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
-        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for the data loader')
 
         parser.add_argument('--epochs', default=1000, type=int)
         parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
@@ -117,7 +117,7 @@ class Rack:
 
     def add_model_configs(self, model_configs):
         """
-        Add model configurations to be trainined in the current script
+        Add model configurations to be trained in the current script
         Args:
             model_configs (dict): model configuration with entries in the form:
                         {
@@ -143,7 +143,8 @@ class Rack:
             dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
         """
         if isinstance(dataset, torch.utils.data.Dataset):
-            self.dataset = dataset
+            self.train_dataset = dataset
+            self.test_dataset = dataset
         elif isinstance(dataset, list):
             self.train_dataset, self.test_dataset = dataset
         else:
@@ -187,17 +188,15 @@ class Rack:
         else:
             pm = False
 
-        if self.dataset is not None:
-            self.train_dataset = self.dataset
-            self.test_dataset = self.dataset
-
         print('[DATASET] Splitting dataset')
 
         indices = list(range(len(self.train_dataset)))
+
         if self.args.shuffle:
             np.random.seed(128)  # TODO random seed as an option
             np.random.shuffle(indices)
 
+        # TRAIN / TEST SPLIT
         if self.args.kfold != 0:
             kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
             indices_seq = list(kf.split(list(range(len(indices)))))
@@ -210,12 +209,12 @@ class Rack:
             self.ntest = len(self.train_dataset) - self.ntrain
             indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
 
-            ####### TODO
-            print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
+        print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
 
         loader_seq = []
-
         record = []
+
+        #TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
         for train, test in indices_seq:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
@@ -556,7 +555,7 @@ class Rack:
             miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
 
             per_class[model_name] = per_class_performance(y_true, y_pred[model_name], self.args.num_classes)
-            conf_m[model_name] = conf_mat(y_true, y_pred[model_name],self.args.num_classes)
+            conf_m[model_name] = conf_mat(y_true, y_pred[model_name], self.args.num_classes)
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
@@ -568,8 +567,8 @@ class Rack:
 
     def final_performance(self, y_true, y_pred):
 
-        per_class = per_class_performance(y_true, y_pred,self.args.num_classes)
-        conf_m = conf_mat(y_true, y_pred,self.args.num_classes)
+        per_class = per_class_performance(y_true, y_pred, self.args.num_classes)
+        conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
         return per_class, conf_m
 
