@@ -57,8 +57,11 @@ class Rack:
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         parser.add_argument('--resume', default='')  # TODO implement resuming a training
         parser.add_argument('--save_all', default=0, type=int,
-                            help='If 0, will save only weigths of the last testing step.'
-                                 'If 1, will save the weights of all testing steps.')
+                            help='If 1, will save the weights of all testing steps.')
+        parser.add_argument('--save_best', default=0, type=int,
+                            help='If 1, will only save the weights of the best epoch')
+        parser.add_argument('--save_last', default=1, type=int,
+                            help='If 1 (default), will only save the weights of the last testing epoch')
         parser.add_argument('--validation', default=0, type=int,
                             help='If set to 1 each epoch will be tested on a validation set,'
                                  ' and the best epoch will be used for the final test on a separate test set')
@@ -100,10 +103,12 @@ class Rack:
         print(self.args)
 
     def _check_args_consistency(self):
-        if self.args.validation and (self.args.test_step == 0 or self.args.save_all == 0):
+        if self.args.validation and (self.args.test_epoch != 1 or self.args.save_all == 0):
             print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
-            self.args.test_step = 1
+            self.args.test_epoch = 1
             self.args.save_all = 1
+        if (self.args.save_all + self.args.save_last + self.args.save_best) > 1:
+            print('[WARNING] save_last, save_best, and save_all are mutually exclusive')
         if self.args.kfold < 3 and self.args.validation:
             print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
             self.args.kfold = 3
@@ -270,7 +275,7 @@ class Rack:
     def launch(self):  # TODO
         """
         MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
-        the model is applied to the test dataset every args.test_step epochs
+        the model is applied to the test dataset every args.test_epoch epochs
         """
 
         self._check_args_consistency()
@@ -407,7 +412,7 @@ class Rack:
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
 
-        if epoch % self.args.test_step == 0 or epoch + 1 == self.args.epochs:
+        if epoch % self.args.test_epoch == 0 or epoch + 1 == self.args.epochs:
 
             if epoch + 1 == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self.test(return_y=True)
