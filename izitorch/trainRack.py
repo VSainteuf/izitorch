@@ -288,7 +288,7 @@ class Rack:
                 print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('[TRAINING CONFIGURATION] Training with {}-fold cross validation'.format(nfold))
+                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(i+1,nfold))
                 subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
