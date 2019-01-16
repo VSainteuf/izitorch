@@ -531,7 +531,7 @@ class Rack:
         for model_name, conf in self.model_configs.items():
             best_epoch = self.best_performance[model_name]['epoch']
             checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, 'model_epoch{}.pth.tar'.format(
-                best_epoch)))  ## TODO if validation then save_all
+                best_epoch)))
             conf['model'].load_state_dict(checkpoint['state_dict'])
             conf['model'].eval()
 
