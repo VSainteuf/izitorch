@@ -312,7 +312,18 @@ class Rack:
             for self.current_epoch in range(self.args.epochs):
                 t0 = time.time()
 
-                train_metrics = self.train_epoch()
+                try:
+                    train_metrics = self.train_epoch()
+                except KeyboardInterrupt:
+                    instruction = self._get_escape_instruction_train()
+                    if instruction == 'e':
+                        return
+                    if instruction == 'r':
+                        continue
+                    if instruction == 't':
+                        self.args.epochs = self.current_epoch + 1
+                        self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
+                        return
                 self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
                 t1 = time.time()
@@ -431,7 +442,7 @@ class Rack:
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
 
-                if self.args.save_best == 1 :
+                if self.args.save_best == 1:
                     if self.best_performance[model_name]['epoch'] == self.current_epoch + 1:
                         file_name = 'model.pth.tar'
                         torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
@@ -574,3 +585,19 @@ class Rack:
                     prediction = conf['model'](x)
                     y_pred[model_name].extend(prediction.argmax(dim=1).cpu().numpy())
         return y_true, y_pred
+
+    def _get_escape_instruction_train(self):
+        time.sleep(1) #make sure all the tracebacks of the subprocesses are printed
+        print('\n'*10)
+        print('[WARNING] Training interrupted ! \n',
+              'Options: \n',
+              '-Resume training (r)\n',
+              '-Escape training and execute tests on current model (t)\n',
+              '-Escape without testing (e)\n')
+
+        x = 'a'
+
+        while x not in ['r', 't', 'e']:
+            x = input('r / t /e ?')
+
+        return x
