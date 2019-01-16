@@ -78,7 +78,9 @@ class Rack:
                             help='Multiplicative factor used on learning rate at lr_steps')
         parser.add_argument('--lr_steps', default='',
                             help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
-        parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
+        parser.add_argument('--test_epoch', default=10, type=int, help='Test model every that many epochs')
+        parser.add_argument('--display_step', default=100, type=int,
+                            help='Display progress within one epoch every that many steps')
 
         self.parser = parser
 
@@ -214,7 +216,7 @@ class Rack:
         loader_seq = []
         record = []
 
-        #TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
+        # TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
         for train, test in indices_seq:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
@@ -288,7 +290,7 @@ class Rack:
                 print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(i+1,nfold))
+                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(i + 1, nfold))
                 subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
@@ -377,7 +379,7 @@ class Rack:
                 if 'scheduler' in conf:
                     conf['scheduler'].step()  # TODO there is apparently a bug when scheduler is used, to be fixed
 
-                if (i + 1) % 100 == 0:
+                if (i + 1) % self.args.display_step == 0:
                     tb = time.time()
                     elapsed = tb - ta
                     print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'
@@ -410,20 +412,21 @@ class Rack:
             if epoch + 1 == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self.test(return_y=True)
             else:
-                test_metrics = self.test()
+                test_metrics = self.test(return_y=False)
 
             for model_name, conf in self.model_configs.items():
+
                 self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
+
                 if self.args.save_all == 1:
                     file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
                 else:
                     file_name = 'model.pth.tar'
-
                 torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
                             'optimizer': conf['optimizer'].state_dict()},
                            os.path.join(conf['res_dir'], subdir, file_name))
@@ -432,11 +435,14 @@ class Rack:
 
                 if self.args.validation:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
+
                 for model_name, conf in self.model_configs.items():
+
                     per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
+
         else:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
@@ -512,57 +518,6 @@ class Rack:
         else:
             return test_metrics
 
-    def final_test(self):
-        acc_meter = {}
-        loss_meter = {}
-
-        y_true = []
-        y_pred = {m: [] for m in self.model_configs}
-
-        for model_name, conf in self.model_configs.items():
-
-            if self.args.validation:
-                print('[TESTING - {}')
-            conf['model'] = conf['model'].eval()
-            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
-            loss_meter[model_name] = tnt.meter.AverageValueMeter()
-
-        for (x, y) in self.test_loader:
-            y_true.extend(list(map(int, y)))
-
-            x = x.to(self.device)
-            y = y.to(self.device)
-
-            for model_name, conf in self.model_configs.items():
-                with torch.no_grad():
-                    prediction = conf['model'](x)
-                    loss = conf['criterion'](prediction, y)
-
-                acc_meter[model_name].add(prediction, y)
-                loss_meter[model_name].add(loss.item())
-
-                y_p = prediction.argmax(dim=1).cpu().numpy()
-                y_pred[model_name].extend(list(y_p))
-
-        test_metrics = {}
-        per_class = {}
-        conf_m = {}
-
-        for model_name in self.model_configs:
-            acc = acc_meter[model_name].value()[0]
-            loss = loss_meter[model_name].value()[0]
-            miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
-
-            per_class[model_name] = per_class_performance(y_true, y_pred[model_name], self.args.num_classes)
-            conf_m[model_name] = conf_mat(y_true, y_pred[model_name], self.args.num_classes)
-
-            test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
-
-            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
-            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
-            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
-
-        return test_metrics, per_class, conf_m
 
     def final_performance(self, y_true, y_pred):
 
