@@ -115,7 +115,7 @@ class Rack:
     def _check_args_consistency(self):
 
         if (self.args.save_best + self.args.save_all == 1):
-            self.agrs.save_last = 0
+            self.args.save_last = 0
 
         if self.args.validation and self.args.test_epoch != 1:
             print('[WARNING] Validation requires testing at each epoch, setting test_epoch to 1')
@@ -129,9 +129,10 @@ class Rack:
             print('[WARNING] save_best and save_all are mutually exclusive setting save_all to 0')
             self.args.save_all = 0
 
-        if self.args.kfold < 3 and self.args.validation:
-            print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
-            self.args.kfold = 3
+        if self.args.kfold != 0:
+            if self.args.kfold < 3 and self.args.validation:
+                print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
+                self.args.kfold = 3
 
     ####### Methods for setting the specific elements of the training rack
 
