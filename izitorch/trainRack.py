@@ -12,13 +12,13 @@ import time
 import json
 import pickle as pkl
 import os
+import sys
 
 
 # TODO update docstring
 # TODO declare all atributes in init
 # TODO optimise redundant blocks
-# TODO correct elapsed time display
-
+#TODO fix ambiguity for epoch value
 
 class Rack:
 
@@ -50,35 +50,49 @@ class Rack:
         """
         parser = argparse.ArgumentParser()
 
+        # Basic arguments
+        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
+        # parser.add_argument('--resume', default='')  # TODO implement resuming a training
+
         parser.add_argument('--dataset', default='/home/vsfg/data')
         parser.add_argument('--num_classes', default=None, type=int,
                             help='number of classes in case of classification problem')
+        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for the data loader')
 
-        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
-        parser.add_argument('--resume', default='')
-        parser.add_argument('--save_all', default=0, type=int,
-                            help='If 0, will save only weigths of the last testing step.'
-                                 'If 1, will save the weights of all testing steps.')
+        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split (when no k-fold)')
+        parser.add_argument('--kfold', default=0, type=int,
+                            help='If non zero, number of folds for k-fold training, and overwrites train_ratio argument')
         parser.add_argument('--validation', default=0, type=int,
-                            help='If set to 1 each epoch will be tested on a validation set,'
+                            help='If set to 1 each epoch will be tested on a validation set of same length as the test set,'
                                  ' and the best epoch will be used for the final test on a separate test set')
+
+        # Weight saving
+        parser.add_argument('--save_last', default=1, type=int,
+                            help='If 1 (default), will only save the weights of the last testing epoch')
+        parser.add_argument('--save_all', default=0, type=int,
+                            help='If 1, will save the weights of all testing steps.')
+        parser.add_argument('--save_best', default=0, type=int,
+                            help='If 1, will only save the weights of the best epoch')
+        parser.add_argument('--metric_best', default='IoU', type=str,
+                            help='metric used to rank the epoch performances, chose between acc / loss / IoU(default)')
+
+        # Optimization parameters
+        parser.add_argument('--epochs', default=1000, type=int)
         parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
+        parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
+        # parser.add_argument('--lr_decay', default=1, type=float,   TODO
+        #                     help='Multiplicative factor used on learning rate at lr_steps')
+        # parser.add_argument('--lr_steps', default='',
+        #                     help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
+
+        parser.add_argument('--test_epoch', default=10, type=int, help='Test model every that many epochs')
+        parser.add_argument('--display_step', default=100, type=int,
+                            help='Display progress within one epoch every that many steps')
+
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
                             help='If nonzero, absolute balue of the gradients will be clipped at this value')
-        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for data loader')
-        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split')
-        parser.add_argument('--kfold', default=0, type=int,
-                            help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
-        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for dataloader')
-
-        parser.add_argument('--epochs', default=1000, type=int)
-        parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
-        parser.add_argument('--lr_decay', default=1, type=float,
-                            help='Multiplicative factor used on learning rate at lr_steps')
-        parser.add_argument('--lr_steps', default='',
-                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
-        parser.add_argument('--test_step', default=10, type=int, help='Test model every that many steps')
 
         self.parser = parser
 
@@ -98,13 +112,26 @@ class Rack:
         print(self.args)
 
     def _check_args_consistency(self):
-        if self.args.validation and (self.args.test_step == 0 or self.args.save_all == 0):
-            print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
-            self.args.test_step = 1
-            self.args.save_all = 1
-        if self.args.kfold < 3 and self.args.validation:
-            print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
-            self.args.kfold = 3
+
+        if (self.args.save_best + self.args.save_all == 1):
+            self.args.save_last = 0
+
+        if self.args.validation and self.args.test_epoch != 1:
+            print('[WARNING] Validation requires testing at each epoch, setting test_epoch to 1')
+            self.args.test_epoch = 1
+            if (self.args.save_best + self.args.save_all == 0):
+                print('[WARNING] Validation requires save_all or save_best, setting save_best to 1')
+                self.args.save_best = 1
+                self.args.save_all = 0
+
+        if (self.args.save_last + self.args.save_best) > 1:
+            print('[WARNING] save_best and save_all are mutually exclusive setting save_all to 0')
+            self.args.save_all = 0
+
+        if self.args.kfold != 0:
+            if self.args.kfold < 3 and self.args.validation:
+                print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
+                self.args.kfold = 3
 
     ####### Methods for setting the specific elements of the training rack
 
@@ -117,7 +144,7 @@ class Rack:
 
     def add_model_configs(self, model_configs):
         """
-        Add model configurations to be trainined in the current script
+        Add model configurations to be trained in the current script
         Args:
             model_configs (dict): model configuration with entries in the form:
                         {
@@ -143,7 +170,8 @@ class Rack:
             dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
         """
         if isinstance(dataset, torch.utils.data.Dataset):
-            self.dataset = dataset
+            self.train_dataset = dataset
+            self.test_dataset = dataset
         elif isinstance(dataset, list):
             self.train_dataset, self.test_dataset = dataset
         else:
@@ -187,17 +215,15 @@ class Rack:
         else:
             pm = False
 
-        if self.dataset is not None:
-            self.train_dataset = self.dataset
-            self.test_dataset = self.dataset
-
         print('[DATASET] Splitting dataset')
 
         indices = list(range(len(self.train_dataset)))
+
         if self.args.shuffle:
             np.random.seed(128)  # TODO random seed as an option
             np.random.shuffle(indices)
 
+        # TRAIN / TEST SPLIT
         if self.args.kfold != 0:
             kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
             indices_seq = list(kf.split(list(range(len(indices)))))
@@ -210,20 +236,19 @@ class Rack:
             self.ntest = len(self.train_dataset) - self.ntrain
             indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
 
-            ####### TODO
-            print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
+        print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
 
         loader_seq = []
-
         record = []
+
+        # TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
         for train, test in indices_seq:
             train_indices = [indices[i] for i in train]
             test_indices = [indices[i] for i in test]
 
             if self.args.validation:
-                validation_indices = np.random.choice(train_indices, size=self.ntest, replace=False)
-                train_indices = [t for t in train_indices if
-                                 t not in validation_indices]  # TODO Find a less expensive way to do this
+                validation_indices = train_indices[-self.ntest:]
+                train_indices = train_indices[:-self.ntest]
 
                 record.append((train_indices, validation_indices, test_indices))
 
@@ -234,7 +259,7 @@ class Rack:
                 train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
                                                sampler=train_sampler,
                                                num_workers=self.args.num_workers, pin_memory=pm)
-                validation_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                validation_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
                                                     sampler=validation_sampler,
                                                     num_workers=self.args.num_workers, pin_memory=pm)
                 test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
@@ -270,7 +295,7 @@ class Rack:
     def launch(self):  # TODO
         """
         MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
-        the model is applied to the test dataset every args.test_step epochs
+        the model is applied to the test dataset every args.test_epoch epochs
         """
 
         self._check_args_consistency()
@@ -290,7 +315,7 @@ class Rack:
                 print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('[TRAINING CONFIGURATION] Training with {}-fold cross validation'.format(nfold))
+                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(i + 1, nfold))
                 subdir = 'FOLD_{}'.format(i + 1)
 
             self.args.total_step = len(self.train_loader)
@@ -304,7 +329,17 @@ class Rack:
             for self.current_epoch in range(self.args.epochs):
                 t0 = time.time()
 
-                train_metrics = self.train_epoch()
+                try:
+                    train_metrics = self.train_epoch()
+                except KeyboardInterrupt:
+                    instruction = self._get_escape_instruction_train()
+                    if instruction == 'e':
+                        return
+                    if instruction == 't':
+                        self.args.epochs = self.current_epoch + 1
+                        self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
+                        return
+
                 self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
                 t1 = time.time()
@@ -317,7 +352,7 @@ class Rack:
         self.best_performance = {}
         for model_name, conf in self.model_configs.items():
             self.stats[model_name] = {}
-            self.best_performance[model_name] = {'epoch': 0, 'IoU': 0}
+            self.best_performance[model_name] = {'epoch': 0, 'IoU': 0, 'acc': 0, 'loss': sys.float_info.max}
 
     def _models_to_device(self):
         for model_name, conf in self.model_configs.items():
@@ -379,7 +414,7 @@ class Rack:
                 if 'scheduler' in conf:
                     conf['scheduler'].step()  # TODO there is apparently a bug when scheduler is used, to be fixed
 
-                if (i + 1) % 100 == 0:
+                if (i + 1) % self.args.display_step == 0:
                     tb = time.time()
                     elapsed = tb - ta
                     print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'
@@ -407,38 +442,48 @@ class Rack:
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
 
-        if epoch % self.args.test_step == 0 or epoch + 1 == self.args.epochs:
+        if epoch % self.args.test_epoch == 0 or epoch + 1 == self.args.epochs:
 
             if epoch + 1 == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self.test(return_y=True)
             else:
-                test_metrics = self.test()
+                test_metrics = self.test(return_y=False)
 
             for model_name, conf in self.model_configs.items():
+
                 self.stats[model_name][epoch + 1] = {**metrics[model_name], **test_metrics[model_name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(model_name, epoch + 1,
                                                                                        self.args.epochs))
 
                 with open(os.path.join(conf['res_dir'], subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[model_name], outfile, indent=4)
-                if self.args.save_all == 1:
-                    file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
-                else:
-                    file_name = 'model.pth.tar'
 
-                torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
-                            'optimizer': conf['optimizer'].state_dict()},
-                           os.path.join(conf['res_dir'], subdir, file_name))
+                if self.args.save_best == 1:
+                    if self.best_performance[model_name]['epoch'] == self.current_epoch + 1:
+                        file_name = 'model.pth.tar'
+                        torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                                    'optimizer': conf['optimizer'].state_dict()},
+                                   os.path.join(conf['res_dir'], subdir, file_name))
+                else:
+                    if self.args.save_all == 1:
+                        file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                    else:
+                        file_name = 'model.pth.tar'
+                    torch.save({'epoch': epoch + 1, 'state_dict': conf['model'].state_dict(),
+                                'optimizer': conf['optimizer'].state_dict()},
+                               os.path.join(conf['res_dir'], subdir, file_name))
 
             if epoch + 1 == self.args.epochs:
 
                 if self.args.validation:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
+
                 for model_name, conf in self.model_configs.items():
                     per_class, conf_m = self.final_performance(y_true, y_pred[model_name])
                     with open(os.path.join(conf['res_dir'], subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(conf['res_dir'], subdir, 'confusion_matrix.pkl'), 'wb'))
+
         else:
             for model_name, conf in self.model_configs.items():
                 self.stats[model_name][epoch + 1] = metrics[model_name]
@@ -497,15 +542,28 @@ class Rack:
 
             test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
 
-            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
-            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
-            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
+            mode = 'Test' if self.args.validation == 0 else 'Val'
+            print('[{}] {} Loss: {:.4f}, Acc : {:.2f}, IoU {:.4f}'.format(model_name, mode, loss, acc, miou))
 
             if self.args.validation:
-                if test_metrics[model_name]['test_IoU'] > self.best_performance[model_name]['IoU']:
-                    print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
-                    self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
-                    self.best_performance[model_name]['epoch'] = self.current_epoch + 1
+                metric = [m for m in test_metrics[model_name].keys() if self.args.metric_best in m][0]
+
+                if self.args.metric_best == 'loss':
+                    if test_metrics[model_name][metric] < self.best_performance[model_name][self.args.metric_best]:
+                        print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
+                        self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
+                        self.best_performance[model_name]['acc'] = test_metrics[model_name]['test_accuracy']
+                        self.best_performance[model_name]['loss'] = test_metrics[model_name]['test_loss']
+
+                        self.best_performance[model_name]['epoch'] = self.current_epoch + 1
+                else:
+                    if test_metrics[model_name][metric] > self.best_performance[model_name][self.args.metric_best]:
+                        print('[PERFORMANCE - {}] BEST EPOCH !'.format(model_name))
+                        self.best_performance[model_name]['IoU'] = test_metrics[model_name]['test_IoU']
+                        self.best_performance[model_name]['acc'] = test_metrics[model_name]['test_accuracy']
+                        self.best_performance[model_name]['loss'] = test_metrics[model_name]['test_loss']
+
+                        self.best_performance[model_name]['epoch'] = self.current_epoch + 1
 
                 test_metrics[model_name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou}
 
@@ -514,62 +572,10 @@ class Rack:
         else:
             return test_metrics
 
-    def final_test(self):
-        acc_meter = {}
-        loss_meter = {}
-
-        y_true = []
-        y_pred = {m: [] for m in self.model_configs}
-
-        for model_name, conf in self.model_configs.items():
-
-            if self.args.validation:
-                print('[TESTING - {}')
-            conf['model'] = conf['model'].eval()
-            acc_meter[model_name] = tnt.meter.ClassErrorMeter(accuracy=True)
-            loss_meter[model_name] = tnt.meter.AverageValueMeter()
-
-        for (x, y) in self.test_loader:
-            y_true.extend(list(map(int, y)))
-
-            x = x.to(self.device)
-            y = y.to(self.device)
-
-            for model_name, conf in self.model_configs.items():
-                with torch.no_grad():
-                    prediction = conf['model'](x)
-                    loss = conf['criterion'](prediction, y)
-
-                acc_meter[model_name].add(prediction, y)
-                loss_meter[model_name].add(loss.item())
-
-                y_p = prediction.argmax(dim=1).cpu().numpy()
-                y_pred[model_name].extend(list(y_p))
-
-        test_metrics = {}
-        per_class = {}
-        conf_m = {}
-
-        for model_name in self.model_configs:
-            acc = acc_meter[model_name].value()[0]
-            loss = loss_meter[model_name].value()[0]
-            miou = mIou(y_true, y_pred[model_name], self.args.num_classes)
-
-            per_class[model_name] = per_class_performance(y_true, y_pred[model_name], self.args.num_classes)
-            conf_m[model_name] = conf_mat(y_true, y_pred[model_name],self.args.num_classes)
-
-            test_metrics[model_name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
-
-            print('[PERFORMANCE - {}] Test accuracy : {:.3f}'.format(model_name, acc))
-            print('[PERFORMANCE - {}] Test loss : {:.4f}'.format(model_name, loss))
-            print('[PERFORMANCE - {}] Test IoU : {:.4f}'.format(model_name, miou))
-
-        return test_metrics, per_class, conf_m
-
     def final_performance(self, y_true, y_pred):
 
-        per_class = per_class_performance(y_true, y_pred,self.args.num_classes)
-        conf_m = conf_mat(y_true, y_pred,self.args.num_classes)
+        per_class = per_class_performance(y_true, y_pred, self.args.num_classes)
+        conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
         return per_class, conf_m
 
@@ -580,8 +586,14 @@ class Rack:
 
         for model_name, conf in self.model_configs.items():
             best_epoch = self.best_performance[model_name]['epoch']
-            checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, 'model_epoch{}.pth.tar'.format(
-                best_epoch)))  ## TODO if validation then save_all
+
+            if self.args.save_all == 1:
+                file_name = 'model_epoch{}.pth.tar'.format(best_epoch)
+            else:
+                file_name = 'model.pth.tar'
+
+            checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, file_name.format(
+                best_epoch)))
             conf['model'].load_state_dict(checkpoint['state_dict'])
             conf['model'].eval()
 
@@ -595,3 +607,18 @@ class Rack:
                     prediction = conf['model'](x)
                     y_pred[model_name].extend(prediction.argmax(dim=1).cpu().numpy())
         return y_true, y_pred
+
+    def _get_escape_instruction_train(self):
+        time.sleep(1)  # make sure all the tracebacks of the subprocesses are printed
+        print('\n' * 10)
+        print('[WARNING] Training interrupted ! \n',
+              'Options: \n',
+              '-Escape training and execute tests on current model (t)\n',
+              '-Escape without testing (e)\n')
+
+        x = 'a'
+
+        while x not in ['t', 'e']:
+            x = input(' t /e ?')
+
+        return x
