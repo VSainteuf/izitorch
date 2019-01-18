@@ -18,8 +18,7 @@ import sys
 # TODO update docstring
 # TODO declare all atributes in init
 # TODO optimise redundant blocks
-# TODO correct elapsed time display
-
+#TODO fix ambiguity for epoch value
 
 class Rack:
 
@@ -587,7 +586,13 @@ class Rack:
 
         for model_name, conf in self.model_configs.items():
             best_epoch = self.best_performance[model_name]['epoch']
-            checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, 'model_epoch{}.pth.tar'.format(
+
+            if self.args.save_all == 1:
+                file_name = 'model_epoch{}.pth.tar'.format(best_epoch)
+            else:
+                file_name = 'model.pth.tar'
+
+            checkpoint = torch.load(os.path.join(conf['res_dir'], subdir, file_name.format(
                 best_epoch)))
             conf['model'].load_state_dict(checkpoint['state_dict'])
             conf['model'].eval()
