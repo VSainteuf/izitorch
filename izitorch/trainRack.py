@@ -325,12 +325,12 @@ class Rack:
                     instruction = self._get_escape_instruction_train()
                     if instruction == 'e':
                         return
-                    if instruction == 'r':
-                        continue
                     if instruction == 't':
                         self.args.epochs = self.current_epoch + 1
                         self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
                         return
+
+
                 self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
                 t1 = time.time()
@@ -598,13 +598,12 @@ class Rack:
         print('\n' * 10)
         print('[WARNING] Training interrupted ! \n',
               'Options: \n',
-              '-Resume training (r)\n',
               '-Escape training and execute tests on current model (t)\n',
               '-Escape without testing (e)\n')
 
         x = 'a'
 
-        while x not in ['r', 't', 'e']:
-            x = input('r / t /e ?')
+        while x not in ['t', 'e']:
+            x = input(' t /e ?')
 
         return x
