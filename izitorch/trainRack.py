@@ -51,42 +51,49 @@ class Rack:
         """
         parser = argparse.ArgumentParser()
 
+        # Basic arguments
+        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
+        # parser.add_argument('--resume', default='')  # TODO implement resuming a training
+
         parser.add_argument('--dataset', default='/home/vsfg/data')
         parser.add_argument('--num_classes', default=None, type=int,
                             help='number of classes in case of classification problem')
+        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
+        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for the data loader')
 
-        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
-        parser.add_argument('--resume', default='')  # TODO implement resuming a training
+        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split (when no k-fold)')
+        parser.add_argument('--kfold', default=0, type=int,
+                            help='If non zero, number of folds for k-fold training, and overwrites train_ratio argument')
+        parser.add_argument('--validation', default=0, type=int,
+                            help='If set to 1 each epoch will be tested on a validation set of same length as the test set,'
+                                 ' and the best epoch will be used for the final test on a separate test set')
+
+        # Weight saving
+        parser.add_argument('--save_last', default=1, type=int,
+                            help='If 1 (default), will only save the weights of the last testing epoch')
         parser.add_argument('--save_all', default=0, type=int,
                             help='If 1, will save the weights of all testing steps.')
         parser.add_argument('--save_best', default=0, type=int,
                             help='If 1, will only save the weights of the best epoch')
-        parser.add_argument('--save_last', default=1, type=int,
-                            help='If 1 (default), will only save the weights of the last testing epoch')
-        parser.add_argument('--validation', default=0, type=int,
-                            help='If set to 1 each epoch will be tested on a validation set,'
-                                 ' and the best epoch will be used for the final test on a separate test set')
         parser.add_argument('--metric_best', default='IoU', type=str,
                             help='metric used to rank the epoch performances, chose between acc / loss / IoU(default)')
-        parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
-        parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
-        parser.add_argument('--grad_clip', default=0, type=float,
-                            help='If nonzero, absolute balue of the gradients will be clipped at this value')
-        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
-        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split (when no k-fold)')
-        parser.add_argument('--kfold', default=0, type=int,
-                            help='If non zero, number of folds for KFCV, and overwrites train_ratio argument')
-        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for the data loader')
 
+        # Optimization parameters
         parser.add_argument('--epochs', default=1000, type=int)
+        parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
         parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
-        parser.add_argument('--lr_decay', default=1, type=float,
-                            help='Multiplicative factor used on learning rate at lr_steps')
-        parser.add_argument('--lr_steps', default='',
-                            help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
+        # parser.add_argument('--lr_decay', default=1, type=float,   TODO
+        #                     help='Multiplicative factor used on learning rate at lr_steps')
+        # parser.add_argument('--lr_steps', default='',
+        #                     help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
+
         parser.add_argument('--test_epoch', default=10, type=int, help='Test model every that many epochs')
         parser.add_argument('--display_step', default=100, type=int,
                             help='Display progress within one epoch every that many steps')
+
+        parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
+        parser.add_argument('--grad_clip', default=0, type=float,
+                            help='If nonzero, absolute balue of the gradients will be clipped at this value')
 
         self.parser = parser
 
@@ -587,8 +594,8 @@ class Rack:
         return y_true, y_pred
 
     def _get_escape_instruction_train(self):
-        time.sleep(1) #make sure all the tracebacks of the subprocesses are printed
-        print('\n'*10)
+        time.sleep(1)  # make sure all the tracebacks of the subprocesses are printed
+        print('\n' * 10)
         print('[WARNING] Training interrupted ! \n',
               'Options: \n',
               '-Resume training (r)\n',
