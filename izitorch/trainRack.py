@@ -113,12 +113,22 @@ class Rack:
         print(self.args)
 
     def _check_args_consistency(self):
-        if self.args.validation and (self.args.test_epoch != 1 or self.args.save_all == 0):
-            print('[WARNING] Validation requires testing at each epoch, setting test step and save all to 1')
+
+        if (self.args.save_best + self.args.save_all == 1):
+            self.agrs.save_last = 0
+
+        if self.args.validation and self.args.test_epoch != 1:
+            print('[WARNING] Validation requires testing at each epoch, setting test_epoch to 1')
             self.args.test_epoch = 1
-            self.args.save_all = 1
-        if (self.args.save_all + self.args.save_last + self.args.save_best) > 1:
-            print('[WARNING] save_last, save_best, and save_all are mutually exclusive')
+            if (self.args.save_best + self.args.save_all == 0):
+                print('[WARNING] Validation requires save_all or save_best, setting save_best to 1')
+                self.args.save_best = 1
+                self.args.save_all = 0
+
+        if (self.args.save_last + self.args.save_best) > 1:
+            print('[WARNING] save_best and save_all are mutually exclusive setting save_all to 0')
+            self.args.save_all = 0
+
         if self.args.kfold < 3 and self.args.validation:
             print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
             self.args.kfold = 3
@@ -329,7 +339,6 @@ class Rack:
                         self.args.epochs = self.current_epoch + 1
                         self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
                         return
-
 
                 self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
