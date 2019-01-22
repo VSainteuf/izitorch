@@ -18,7 +18,7 @@ import sys
 # TODO update docstring
 # TODO declare all atributes in init
 # TODO optimise redundant blocks
-#TODO fix ambiguity for epoch value
+# TODO fix ambiguity for epoch value
 
 class Rack:
 
@@ -26,14 +26,12 @@ class Rack:
         torch.manual_seed(1)
         self.model_configs = {}
         self.set_basic_menu()
-        self.set_device()
         self.dataset = None
 
     def to_dict(self):
         output = {}
         for model_name, conf in self.model_configs.items():
             d = vars(self.args).copy()
-            d['device'] = str(self.device)
 
             d['model'] = str(conf['model'])
             d['criterion'] = str(conf['criterion'])
@@ -51,6 +49,7 @@ class Rack:
         parser = argparse.ArgumentParser()
 
         # Basic arguments
+        parser.add_argument('--device', default='cuda', help='device to use for tensor computations (cpu/cuda)')
         parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
         # parser.add_argument('--resume', default='')  # TODO implement resuming a training
 
@@ -133,14 +132,20 @@ class Rack:
                 print('[WARNING] K-fold training with validation requires k > 2, setting k=3')
                 self.args.kfold = 3
 
+        if self.args.device == 'gpu' and not torch.cuda.is_available():
+            print('[WARNING] No GPU found, setting device to gpu')
+            self.args.device = 'cpu'
+
     ####### Methods for setting the specific elements of the training rack
 
-    def set_device(self, device_name=None):
+    def _set_device(self, device_name=None):
         """Sets the device used by torch for computation, will prioritize GPU by default but can be set manually"""
-        try:
-            self.device = torch.device(device_name)
-        except TypeError:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        # try:
+        #     self.device = torch.device(device_name)
+        # except TypeError:
+        #     self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+        self.device = torch.device(self.args.device)
 
     def add_model_configs(self, model_configs):
         """
@@ -300,6 +305,7 @@ class Rack:
 
         self._check_args_consistency()
         self._prepare_output()
+        self._set_device()
 
         loader_seq = self._get_loaders()
         nfold = len(loader_seq)
