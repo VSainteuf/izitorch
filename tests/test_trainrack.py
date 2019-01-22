@@ -11,7 +11,7 @@ kfold = 0
 num_classes = 2
 
 
-def run_training(save_mode='last', kfold=0, validation=0):
+def run_training(save_mode='last', kfold=0, validation=0, device = None):
     cmd = ['python', 'guinea_pig.py']
     cmd.extend(['--num_classes', num_classes])
 
@@ -20,6 +20,9 @@ def run_training(save_mode='last', kfold=0, validation=0):
     cmd.extend(['--test_epoch', test_epoch])
     cmd.extend(['--num_workers', num_workers])
     cmd.extend(['--lr', lr])
+
+    if device is not None:
+        cmd.extend(['--device', device])
 
     cmd.extend(['--validation', validation])
     cmd.extend(['--kfold', kfold])
@@ -42,6 +45,8 @@ def run_training(save_mode='last', kfold=0, validation=0):
     return r
 
 
+
+
 save_confs = ['last', 'all', 'best']
 kfconfs = [0, 3]
 val_confs = [0, 1]
@@ -62,6 +67,11 @@ def test_running(conf):
     assert run_training(s, k, v) == 0
 
 
+def test_cpu():
+    assert run_training(device='cpu') == 0
+
+def test_gpu():
+    assert run_training(device='cuda') == 0
 
 
 
