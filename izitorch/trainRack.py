@@ -17,7 +17,6 @@ import sys
 
 # TODO update docstring
 # TODO optimise redundant blocks
-# TODO fix ambiguity for epoch value
 
 class Rack:
 
@@ -346,17 +345,17 @@ class Rack:
                 t0 = time.time()
 
                 try:
-                    train_metrics = self.train_epoch()
+                    train_metrics = self._train_epoch()
                 except KeyboardInterrupt:
                     instruction = self._get_escape_instruction_train()
                     if instruction == 'e':
                         return
                     if instruction == 't':
                         self.args.epochs = self.current_epoch
-                        self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
+                        self._checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
                         return
 
-                self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
+                self._checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
                 t1 = time.time()
 
@@ -375,7 +374,7 @@ class Rack:
         for mc in self.model_configs:
             mc.model = mc.model.to(self.device)
 
-    def train_epoch(self):  # TODO
+    def _train_epoch(self):  # TODO
         """
         Trains the model on one epoch and displays the evolution of the training metrics.
         Returns a dictionary with the performance metrics over the whole epoch.
@@ -450,7 +449,7 @@ class Rack:
 
         return metrics
 
-    def checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
+    def _checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
         """
         Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
         If on a test epoch the test metrics will also be computed and writen in the trainlog
@@ -463,9 +462,9 @@ class Rack:
         if epoch % self.args.test_epoch == 0 or epoch == self.args.epochs:
 
             if epoch == self.args.epochs:
-                test_metrics, (y_true, y_pred) = self.test(return_y=True)
+                test_metrics, (y_true, y_pred) = self._test(return_y=True)
             else:
-                test_metrics = self.test(return_y=False)
+                test_metrics = self._test(return_y=False)
 
             for mc in self.model_configs:
 
@@ -494,10 +493,10 @@ class Rack:
             if epoch == self.args.epochs:
 
                 if self.args.validation:
-                    y_true, y_pred = self.get_best_predictions(subdir=subdir)
+                    y_true, y_pred = self._get_best_predictions(subdir=subdir)
 
                 for mc in self.model_configs:
-                    per_class, conf_m = self.final_performance(y_true, y_pred[mc.name])
+                    per_class, conf_m = self._final_performance(y_true, y_pred[mc.name])
                     with open(os.path.join(mc.res_dir, subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
@@ -511,7 +510,7 @@ class Rack:
                 with open(os.path.join(mc.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[mc.name], outfile, indent=4)
 
-    def test(self, return_y=False):  # TODO
+    def _test(self, return_y=False):  # TODO
         """
         Tests the model on the test or validation set and returns the performance metrics as a dictionnary
         """
@@ -590,14 +589,14 @@ class Rack:
         else:
             return test_metrics
 
-    def final_performance(self, y_true, y_pred):
+    def _final_performance(self, y_true, y_pred):
 
         per_class = per_class_performance(y_true, y_pred, self.args.num_classes)
         conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
         return per_class, conf_m
 
-    def get_best_predictions(self, subdir=''):
+    def _get_best_predictions(self, subdir=''):
 
         y_true = []
         y_pred = {m.name: [] for m in self.model_configs}
