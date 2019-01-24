@@ -106,7 +106,7 @@ class Rack:
 
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
-                            help='If nonzero, absolute balue of the gradients will be clipped at this value')
+                            help='If nonzero, absolute value of the gradients will be clipped at this value')
 
         self.parser = parser
 
@@ -342,7 +342,7 @@ class Rack:
 
             self._models_to_device()
 
-            for self.current_epoch in range(self.args.epochs):
+            for self.current_epoch in range(1, self.args.epochs + 1):
                 t0 = time.time()
 
                 try:
@@ -352,7 +352,7 @@ class Rack:
                     if instruction == 'e':
                         return
                     if instruction == 't':
-                        self.args.epochs = self.current_epoch + 1
+                        self.args.epochs = self.current_epoch
                         self.checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
                         return
 
@@ -460,38 +460,38 @@ class Rack:
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
 
-        if epoch % self.args.test_epoch == 0 or epoch + 1 == self.args.epochs:
+        if epoch % self.args.test_epoch == 0 or epoch == self.args.epochs:
 
-            if epoch + 1 == self.args.epochs:
+            if epoch == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self.test(return_y=True)
             else:
                 test_metrics = self.test(return_y=False)
 
             for mc in self.model_configs:
 
-                self.stats[mc.name][epoch + 1] = {**metrics[mc.name], **test_metrics[mc.name]}  # TODO
-                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch + 1,
+                self.stats[mc.name][epoch] = {**metrics[mc.name], **test_metrics[mc.name]}  # TODO
+                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch,
                                                                                        self.args.epochs))
 
                 with open(os.path.join(mc.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[mc.name], outfile, indent=4)
 
                 if self.args.save_best == 1:
-                    if self.best_performance[mc.name]['epoch'] == self.current_epoch + 1:
+                    if self.best_performance[mc.name]['epoch'] == self.current_epoch:
                         file_name = 'model.pth.tar'
-                        torch.save({'epoch': epoch + 1, 'state_dict': mc.model.state_dict(),
+                        torch.save({'epoch': epoch, 'state_dict': mc.model.state_dict(),
                                     'optimizer': mc.optimizer.state_dict()},
                                    os.path.join(mc.res_dir, subdir, file_name))
                 else:
                     if self.args.save_all == 1:
-                        file_name = 'model_epoch{}.pth.tar'.format(epoch + 1)
+                        file_name = 'model_epoch{}.pth.tar'.format(epoch)
                     else:
                         file_name = 'model.pth.tar'
-                    torch.save({'epoch': epoch + 1, 'state_dict': mc.model.state_dict(),
+                    torch.save({'epoch': epoch, 'state_dict': mc.model.state_dict(),
                                 'optimizer': mc.optimizer.state_dict()},
                                os.path.join(mc.res_dir, subdir, file_name))
 
-            if epoch + 1 == self.args.epochs:
+            if epoch == self.args.epochs:
 
                 if self.args.validation:
                     y_true, y_pred = self.get_best_predictions(subdir=subdir)
@@ -504,9 +504,9 @@ class Rack:
 
         else:
             for mc in self.model_configs:
-                self.stats[mc.name][epoch + 1] = metrics[mc.name]
-                print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch + 1,
-                                                                                       self.args.epochs))
+                self.stats[mc.name][epoch] = metrics[mc.name]
+                print(
+                    '[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch, self.args.epochs))
 
                 with open(os.path.join(mc.res_dir, subdir, 'trainlog.json'), 'w') as outfile:
                     json.dump(self.stats[mc.name], outfile, indent=4)
@@ -573,7 +573,7 @@ class Rack:
                         self.best_performance[mc.name]['acc'] = test_metrics[mc.name]['test_accuracy']
                         self.best_performance[mc.name]['loss'] = test_metrics[mc.name]['test_loss']
 
-                        self.best_performance[mc.name]['epoch'] = self.current_epoch + 1
+                        self.best_performance[mc.name]['epoch'] = self.current_epoch
                 else:
                     if test_metrics[mc.name][metric] > self.best_performance[mc.name][self.args.metric_best]:
                         print('[PERFORMANCE - {}] BEST EPOCH !'.format(mc.name))
@@ -581,7 +581,7 @@ class Rack:
                         self.best_performance[mc.name]['acc'] = test_metrics[mc.name]['test_accuracy']
                         self.best_performance[mc.name]['loss'] = test_metrics[mc.name]['test_loss']
 
-                        self.best_performance[mc.name]['epoch'] = self.current_epoch + 1
+                        self.best_performance[mc.name]['epoch'] = self.current_epoch
 
                 test_metrics[mc.name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou}
 
