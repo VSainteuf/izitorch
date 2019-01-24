@@ -16,17 +16,33 @@ import sys
 
 
 # TODO update docstring
-# TODO declare all atributes in init
 # TODO optimise redundant blocks
 # TODO fix ambiguity for epoch value
 
 class Rack:
 
     def __init__(self):
+
         torch.manual_seed(1)
+        self.parser = None
+        self.args = None
+        self.device = None
+
+        self.train_dataset = None
+        self.test_dataset = None
+        self.ntrain = None
+        self.ntest = None
+
+        self.train_loader = None
+        self.validation_loader = None
+        self.test_loader = None
+        self.current_epoch = None
+
+        self.stats = None
+        self.best_performance = None
+
         self.model_configs = []
         self.set_basic_menu()
-        self.dataset = None
 
     def to_dict(self):
         output = {}
@@ -111,13 +127,13 @@ class Rack:
 
     def _check_args_consistency(self):
 
-        if (self.args.save_best + self.args.save_all == 1):
+        if (self.args.save_best + self.args.save_all) == 1:
             self.args.save_last = 0
 
         if self.args.validation and self.args.test_epoch != 1:
             print('[WARNING] Validation requires testing at each epoch, setting test_epoch to 1')
             self.args.test_epoch = 1
-            if (self.args.save_best + self.args.save_all == 0):
+            if (self.args.save_best + self.args.save_all) == 0:
                 print('[WARNING] Validation requires save_all or save_best, setting save_best to 1')
                 self.args.save_best = 1
                 self.args.save_all = 0
@@ -398,7 +414,6 @@ class Rack:
                 loss[mc.name] = mc.criterion(outputs[mc.name], y.long())
                 prediction[mc.name] = outputs[mc.name].detach()
 
-
                 acc_meter[mc.name].add(prediction[mc.name], y)
                 loss_meter[mc.name].add(loss[mc.name].item())
 
@@ -430,8 +445,8 @@ class Rack:
         for mc in self.model_configs:
             miou = mIou(y_true, y_pred[mc.name], self.args.num_classes)
             metrics[mc.name] = {'loss': loss_meter[mc.name].value()[0],
-                                   'accuracy': acc_meter[mc.name].value()[0],
-                                   'IoU': miou}
+                                'accuracy': acc_meter[mc.name].value()[0],
+                                'IoU': miou}
 
         return metrics
 
@@ -529,7 +544,7 @@ class Rack:
             for mc in self.model_configs:
                 with torch.no_grad():
                     prediction[mc.name] = mc.model(x)
-                    loss[mc.name] =  mc.criterion(prediction[mc.name], y)
+                    loss[mc.name] = mc.criterion(prediction[mc.name], y)
 
                 acc_meter[mc.name].add(prediction[mc.name], y)
                 loss_meter[mc.name].add(loss[mc.name].item())
@@ -595,7 +610,7 @@ class Rack:
             else:
                 file_name = 'model.pth.tar'
 
-            checkpoint = torch.load(os.path.join( mc.res_dir, subdir, file_name.format(
+            checkpoint = torch.load(os.path.join(mc.res_dir, subdir, file_name.format(
                 best_epoch)))
             mc.model.load_state_dict(checkpoint['state_dict'])
             mc.model.eval()
@@ -607,7 +622,7 @@ class Rack:
 
             for mc in self.model_configs:
                 with torch.no_grad():
-                    prediction =  mc.model(x)
+                    prediction = mc.model(x)
                     y_pred[mc.name].extend(prediction.argmax(dim=1).cpu().numpy())
         return y_true, y_pred
 
