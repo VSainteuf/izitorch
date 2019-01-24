@@ -41,7 +41,7 @@ class Rack:
         self.best_performance = None
 
         self.model_configs = []
-        self.set_basic_menu()
+        self._set_basic_menu()
 
     def to_dict(self):
         output = {}
@@ -56,7 +56,7 @@ class Rack:
         return output
 
     ####### Methods for the options menu
-    def set_basic_menu(self):
+    def _set_basic_menu(self):
         """
         Sets a basic argparse menu with the common arguments
         """
@@ -160,17 +160,7 @@ class Rack:
         """
         Add model configurations to be trained in the current script
         Args:
-            model_configs (dict): model configuration with entries in the form:
-                        {
-                            model_name:{
-                                        'model':torch.nn instance,
-                                        'optimizer': torch optimizer instance,
-                                        'criterion' : torch.nn criterion instance,
-                                        'scheduler' : (optional) torch.optim learning rate scheduler
-                            }
-                        }
-        Returns:
-
+            model_configs (list): list of trainRack.ModelConfig instances
         """
         self.model_configs.extend(model_configs)
 
