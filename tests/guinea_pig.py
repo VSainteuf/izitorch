@@ -17,7 +17,7 @@ class Model(nn.Module):
 
 
 class RandomDataset(data.Dataset):
-    def __init__(self, nsamp=10000, seqlen=5, nfeat=10, nclass=2):
+    def __init__(self, nsamp=1000, seqlen=5, nfeat=10, nclass=2):
         super(RandomDataset, self).__init__()
         self.nsamp = nsamp
         self.nfeat = nfeat
