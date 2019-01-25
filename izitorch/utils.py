@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding:UTF-8 -*-
 
-#Credits to: https://gist.github.com/jeasinema
-
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -10,6 +8,9 @@ import torch.nn.init as init
 
 def weight_init(m):
     '''
+    Initializes a model's parameters.
+    Credits to: https://gist.github.com/jeasinema
+
     Usage:
         model = Model()
         model.apply(weight_init)
