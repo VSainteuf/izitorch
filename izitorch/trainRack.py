@@ -1,3 +1,13 @@
+"""
+Main script of the package. It implements an abstract training rack class which manages common mechanisms of
+training models on pytorch: training iterations, back-propagation, training scheme (e.g. k-fold or simple training,
+with or without a validation set, testing), dataset splitting, and checkpoints.
+The idea is to manage all these aspects under the hood, with a fair degree of flexibility, and to reduce the user's
+scope to providing the dataset to be used, and defining the models that are to be trained.
+The package was mainly developed for image classification problems but should easily be applied to other types of
+problems.
+"""
+
 import torch
 from torch.utils import data
 import torchnet as tnt
@@ -15,20 +25,48 @@ import os
 import sys
 
 
-# TODO update docstring
-# TODO optimise redundant blocks
+# TODO Add resume training feature
+# TODO Add a stop at convergence feature
+# TODO Remove per class metrics
 
 class Rack:
+    """
+    Pytorch model training rack. It implements an argparse menu to set the parameters of the training program, and the
+    methods to execute it. The class is meant to be used in a script that is then called in command line (see examples).
+    After initialisation, custom arguments can be added to the argparse menu.
+    The neccessary steps to launch a training are as follows:
+        - Parse the arguments (rack.parse_args())
+        - Set the dataset (rack.set_dataset(dataset))
+        - Set the model configuration(s) (rack.add_model_configs(configs))
+        (the rack supports multi-model training i.e. training multiple models on the same dataset at the same time)
+        - Launch the training (rack.launch())
+
+    Attributes:
+        parser (argparse.ArgumentParser): Rack argument parser
+        args (argparse.ArgumentParser.args): Parameters retrieved from the argparse menu
+        device (torch.device): Device used for computations
+        dataset_train_transforms (torch.utils.data.Dataset): Dataset used for training
+        dataset_test_transforms (torch.utils.data.Dataset): Dataset used for testing ##TODO Clarifiy
+        ntrain (int): Number of training samples
+        ntest (int): Number of testing samples
+        train_loader  (torch.utils.data.DataLoader): Dataloader for training
+        test_loader  (torch.utils.data.DataLoader): Dataloader for testing
+        validation_loader  (torch.utils.data.DataLoader): Dataloader for validation
+        current_epoch (int): Active epoch in training loop
+        stats (dict): dictionary containing the trainlogs
+        best_performance (dict): dictionary keeping track of the best epoch
+        model_configs (list): list of trainRack.ModelConfig instances
+    """
 
     def __init__(self):
-
-        torch.manual_seed(1)
+        """Initiliazes the rack and attaches a basic argparse menu to it."""
+        torch.manual_seed(1)  # TODO random seed as an option
         self.parser = None
         self.args = None
         self.device = None
 
-        self.train_dataset = None
-        self.test_dataset = None
+        self.dataset_train_transforms = None
+        self.dataset_test_transforms = None
         self.ntrain = None
         self.ntest = None
 
@@ -44,6 +82,7 @@ class Rack:
         self._set_basic_menu()
 
     def to_dict(self):
+        """Summarizes the rack's configuration in the form of a dictionary"""
         output = {}
 
         for mc in self.model_configs:
@@ -58,7 +97,7 @@ class Rack:
     ####### Methods for the options menu
     def _set_basic_menu(self):
         """
-        Sets a basic argparse menu with the common arguments
+        Sets a basic argparse menu with commonly used arguments
         """
         parser = argparse.ArgumentParser()
 
@@ -111,7 +150,7 @@ class Rack:
 
     def add_arguments(self, arg_dict):
         """
-        Add custom arguments to the argparse menu
+        Adds custom arguments to the argparse menu
         Args:
             arg_dict (dict): {arg_name:{'default':default_value,'type':arg_type}
         """
@@ -119,13 +158,16 @@ class Rack:
             self.parser.add_argument('--{}'.format(name), default=setting['default'], type=setting['type'])
 
     def parse_args(self):
+        """Parses the arguments passed in the command line"""
         self.args = self.parser.parse_args()
 
     def print_args(self):
+        """Displays the values of the arguments """
         print(self.args)
 
     def _check_args_consistency(self):
-
+        """Performs several sanity checks on the arguments passed to the rack.
+        Inconsistencies are automatically resolved, and a warning is prompted, but no exception is thrown."""
         if (self.args.save_best + self.args.save_all) == 1:
             self.args.save_last = 0
 
@@ -158,7 +200,7 @@ class Rack:
 
     def add_model_configs(self, model_configs):
         """
-        Add model configurations to be trained in the current script
+        Add model configurations to be trained in the current script.
         Args:
             model_configs (list): list of trainRack.ModelConfig instances
         """
@@ -166,30 +208,31 @@ class Rack:
 
     def set_dataset(self, dataset):
         """
-        Attaches a dataset to the training rack. If only one dataset is provided, it will be split in train and test,
-        but a list of two datasets can also be provided (allows to have different image transformation on train and test).
-        For generality's sake the dataset should return items in the form (input,target).
-        If the network uses more exotic input, this needs to be dealt with in the forward method of its definition
+        Attaches a custom dataset (inheriting from the torch.utils.data.Dataset class) to the training rack.
+        The dataset should return items in the form (input,target).
+
+        If data augmentation is used and should be only active during training, a list of two dataset instances can be
+        passed. Both datasets should point to the same data (the train/val/test split is managed by the rack) but one
+        should have the augmentation turned off.
+
         Args:
-            dataset: instance of torch.utils.dataset or list [train_dataset, test_dataset]
+            dataset(torch.utils.data.Dataset, or list thereof): Dataset to be used for training
         """
         if isinstance(dataset, torch.utils.data.Dataset):
-            self.train_dataset = dataset
-            self.test_dataset = dataset
+            self.dataset_train_transforms = dataset
+            self.dataset_test_transforms = dataset
         elif isinstance(dataset, list):
-            self.train_dataset, self.test_dataset = dataset
-        else:
-            raise ValueError
+            self.dataset_train_transforms, self.dataset_test_transforms = dataset
 
     ####### Methods for preparation
 
     def _prepare_output(self):
         """
-        Creates output directory and writes the configuration file in it.
-
+        Creates the output directory (specified by the --res_dir parameter), with one sub-folder per model and
+        writes the a summary of the configuration in each of them.
         """
 
-        repr = self.to_dict()
+        conf = self.to_dict()
 
         for mc in self.model_configs:
 
@@ -206,13 +249,12 @@ class Rack:
                     os.makedirs(os.path.join(res_dir, 'FOLD_{}'.format(i + 1)), exist_ok=True)
 
             with open(os.path.join(res_dir, 'conf.json'), 'w') as fp:
-                json.dump(repr[mc.name], fp, indent=4)
+                json.dump(conf[mc.name], fp, indent=4)
 
     def _get_loaders(self):
         """
-        Splits the dataset in train and test and returns a list of train and test dataloader pairs.
-        Each pair of dataloader of the list corresponds to one fold in case of k-fold, and the list is of length one if
-        there is no k-fold
+        Prepares the sequence of train/(val)/test loaders that will be used. The sequence will be of length one if
+        --k_fold is left to 0 (simple training).
         """
         if self.args.pin_memory == 1:
             pm = True
@@ -221,7 +263,7 @@ class Rack:
 
         print('[DATASET] Splitting dataset')
 
-        indices = list(range(len(self.train_dataset)))
+        indices = list(range(len(self.dataset_train_transforms)))
 
         if self.args.shuffle:
             np.random.seed(128)  # TODO random seed as an option
@@ -236,8 +278,8 @@ class Rack:
             print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
 
         else:
-            self.ntrain = int(np.floor(self.args.train_ratio * len(self.train_dataset)))
-            self.ntest = len(self.train_dataset) - self.ntrain
+            self.ntrain = int(np.floor(self.args.train_ratio * len(self.dataset_train_transforms)))
+            self.ntest = len(self.dataset_train_transforms) - self.ntrain
             indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
 
         print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
@@ -260,13 +302,13 @@ class Rack:
                 validation_sampler = data.sampler.SubsetRandomSampler(validation_indices)
                 test_sampler = data.sampler.SubsetRandomSampler(test_indices)
 
-                train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
                                                sampler=train_sampler,
                                                num_workers=self.args.num_workers, pin_memory=pm)
-                validation_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                validation_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
                                                     sampler=validation_sampler,
                                                     num_workers=self.args.num_workers, pin_memory=pm)
-                test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
                                               sampler=test_sampler,
                                               num_workers=self.args.num_workers, pin_memory=pm)
                 loader_seq.append((train_loader, validation_loader, test_loader))
@@ -278,10 +320,10 @@ class Rack:
                 train_sampler = data.sampler.SubsetRandomSampler(train_indices)
                 test_sampler = data.sampler.SubsetRandomSampler(test_indices)
 
-                train_loader = data.DataLoader(self.train_dataset, batch_size=self.args.batch_size,
+                train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
                                                sampler=train_sampler,
                                                num_workers=self.args.num_workers, pin_memory=pm)
-                test_loader = data.DataLoader(self.test_dataset, batch_size=self.args.batch_size,
+                test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
                                               sampler=test_sampler,
                                               num_workers=self.args.num_workers, pin_memory=pm)
                 loader_seq.append((train_loader, test_loader))
@@ -290,7 +332,22 @@ class Rack:
 
         return loader_seq
 
+    def _init_trainlogs(self):
+        """Prepares the trainlog dictionaries."""
+        self.stats = {}
+        self.best_performance = {}
+
+        for mc in self.model_configs:
+            self.stats[mc.name] = {}
+            self.best_performance[mc.name] = {'epoch': 0, 'IoU': 0, 'acc': 0, 'loss': sys.float_info.max}
+
+    def _models_to_device(self):
+        """Sends the models to the specified device."""
+        for mc in self.model_configs:
+            mc.model = mc.model.to(self.device)
+
     def _init_weights(self):
+        """Initializes the weights of the rack's models."""
         for mc in self.model_configs:
             mc.model = mc.model.apply(weight_init)
 
@@ -298,8 +355,9 @@ class Rack:
 
     def launch(self):  # TODO
         """
-        MAIN METHOD: does the necessary preparations and launches the training loop for the specified number of epochs
-        the model is applied to the test dataset every args.test_epoch epochs
+        Main method of the module: Prepares training (check arguments consistency, prepare output directories, split
+        dataset and retrieve dataloaders) and performs training and testing according to the arguments specified in the
+        argparse menu.
         """
 
         self._check_args_consistency()
@@ -334,16 +392,7 @@ class Rack:
             for self.current_epoch in range(1, self.args.epochs + 1):
                 t0 = time.time()
 
-                try:
-                    train_metrics = self._train_epoch()
-                except KeyboardInterrupt:
-                    instruction = self._get_escape_instruction_train()
-                    if instruction == 'e':
-                        return
-                    if instruction == 't':
-                        self.args.epochs = self.current_epoch
-                        self._checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
-                        return
+                train_metrics = self._train_epoch()
 
                 self._checkpoint_epoch(self.current_epoch, train_metrics, subdir=subdir)
 
@@ -352,21 +401,9 @@ class Rack:
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
                 print('####################################################')
 
-    def _init_trainlogs(self):
-        self.stats = {}
-        self.best_performance = {}
-
-        for mc in self.model_configs:
-            self.stats[mc.name] = {}
-            self.best_performance[mc.name] = {'epoch': 0, 'IoU': 0, 'acc': 0, 'loss': sys.float_info.max}
-
-    def _models_to_device(self):
-        for mc in self.model_configs:
-            mc.model = mc.model.to(self.device)
-
     def _train_epoch(self):  # TODO
         """
-        Trains the model on one epoch and displays the evolution of the training metrics.
+        Trains the model(s) on one epoch and displays the evolution of the training metrics.
         Returns a dictionary with the performance metrics over the whole epoch.
         """
         acc_meter = {}
@@ -418,9 +455,6 @@ class Rack:
 
                 mc.optimizer.step()
 
-                # if 'scheduler' in mc:
-                #     mc.scheduler.step()  # TODO there is apparently a bug when scheduler is used, to be fixed
-
                 if (i + 1) % self.args.display_step == 0:
                     tb = time.time()
                     elapsed = tb - ta
@@ -439,24 +473,25 @@ class Rack:
 
         return metrics
 
-    def _checkpoint_epoch(self, epoch, metrics, subdir=''):  # TODO make it cleaner
+    def _checkpoint_epoch(self, epoch, metrics, subdir=''):
         """
-        Computes accuracy and loss of the epoch and writes it in the trainlog, along with the model weights.
-        If on a test epoch the test metrics will also be computed and writen in the trainlog
+        Writes the training metrics - and testing metrics, if on a test epoch - in the output trainlog file, and saves
+        the model(s) weights according to the strategy specified in the argparse menu (save best, last or all).
+
         Args:
-            epoch (int): number of the epoch
+            epoch (int): epoch number
             metrics (dict): training metrics to be written
             subdir (str): Optional, name of the target sub directory (used for k-fold)
         """
 
-        if epoch % self.args.test_epoch == 0 or epoch == self.args.epochs:
+        if epoch % self.args.test_epoch == 0 or epoch == self.args.epochs:  # Test epoch or last epoch
 
             if epoch == self.args.epochs:
                 test_metrics, (y_true, y_pred) = self._test(return_y=True)
             else:
                 test_metrics = self._test(return_y=False)
 
-            for mc in self.model_configs:
+            for mc in self.model_configs: # Write trainlog and model weights
 
                 self.stats[mc.name][epoch] = {**metrics[mc.name], **test_metrics[mc.name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch,
@@ -480,18 +515,18 @@ class Rack:
                                 'optimizer': mc.optimizer.state_dict()},
                                os.path.join(mc.res_dir, subdir, file_name))
 
-            if epoch == self.args.epochs:
+            if epoch == self.args.epochs:  #Final epoch
 
                 if self.args.validation:
                     y_true, y_pred = self._get_best_predictions(subdir=subdir)
 
-                for mc in self.model_configs:
+                for mc in self.model_configs: # Final performance on the test set
                     per_class, conf_m = self._final_performance(y_true, y_pred[mc.name])
                     with open(os.path.join(mc.res_dir, subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
 
-        else:
+        else:  #Regular epoch without testing
             for mc in self.model_configs:
                 self.stats[mc.name][epoch] = metrics[mc.name]
                 print(
@@ -502,10 +537,17 @@ class Rack:
 
     def _test(self, return_y=False):  # TODO
         """
-        Tests the model on the test or validation set and returns the performance metrics as a dictionnary
+        Tests the model on the test or validation set and returns the performance metrics as a dictionary
+
+        Args:
+            return_y (bool): If True the method will also return the predicted and true labels on the test set.
         """
         # TODO generalise method and just give a list of metrics as rack parameter
+
         print('Testing models . . .')
+
+
+        # Initialize meters
 
         acc_meter = {}
         loss_meter = {}
@@ -520,6 +562,8 @@ class Rack:
             loss_meter[mc.name] = tnt.meter.AverageValueMeter()
 
         loader = self.validation_loader if self.args.validation else self.test_loader
+
+        # Inference
 
         for (x, y) in loader:
 
@@ -542,7 +586,8 @@ class Rack:
                 y_pred[mc.name].extend(list(y_p))
 
         test_metrics = {}
-        for mc in self.model_configs:
+
+        for mc in self.model_configs: #Display, and archive best results in case of validation
             acc = acc_meter[mc.name].value()[0]
             loss = loss_meter[mc.name].value()[0]
             miou = mIou(y_true, y_pred[mc.name], self.args.num_classes)
@@ -580,14 +625,20 @@ class Rack:
             return test_metrics
 
     def _final_performance(self, y_true, y_pred):
-
+        """
+        Computes the final performance(s) of the model(s) on the test set. If trained with validation, the weights of
+        the epoch achieving the best results are used. Otherwise, the weights of the last epoch are kept for testing.
+        """
         per_class = per_class_performance(y_true, y_pred, self.args.num_classes)
         conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
         return per_class, conf_m
 
     def _get_best_predictions(self, subdir=''):
-
+        """
+        Gets the prediction of the model on the test set, using the weights that achieved the best performance on the
+        validation set.
+        """
         y_true = []
         y_pred = {m.name: [] for m in self.model_configs}
 
@@ -615,23 +666,16 @@ class Rack:
                     y_pred[mc.name].extend(prediction.argmax(dim=1).cpu().numpy())
         return y_true, y_pred
 
-    def _get_escape_instruction_train(self):
-        time.sleep(1)  # make sure all the tracebacks of the subprocesses are printed
-        print('\n' * 10)
-        print('[WARNING] Training interrupted ! \n',
-              'Options: \n',
-              '-Escape training and execute tests on current model (t)\n',
-              '-Escape without testing (e)\n')
-
-        x = 'a'
-
-        while x not in ['t', 'e']:
-            x = input(' t /e ?')
-
-        return x
-
 
 class ModelConfig:
+    """
+    Individual model configuration. It is defined by the model, the loss and the optimizer to be used.
+    Attributes:
+        name (str): Name of the configuration.
+        model (torch.nn.Module): Instance of model to be trained.
+        criterion (torch.nn loss): Instance of loss to use for training.
+        optimizer (torch.optim otimizer): Instance of optmizer to use for training.
+    """
     def __init__(self, name, model=None, criterion=None, optimizer=None):
         self.name = name
         self.model = model
