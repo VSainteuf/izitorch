@@ -14,7 +14,7 @@ import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
 
-from izitorch.metrics import mIou, conf_mat, per_class_performance
+from izitorch.metrics import mIou, conf_mat
 from izitorch.utils import weight_init, get_nparams
 
 import argparse
@@ -521,9 +521,8 @@ class Rack:
                     y_true, y_pred = self._get_best_predictions(subdir=subdir)
 
                 for mc in self.model_configs:  # Final performance on the test set
-                    per_class, conf_m = self._final_performance(y_true, y_pred[mc.name])
-                    with open(os.path.join(mc.res_dir, subdir, 'per_class_metrics.json'), 'w') as outfile:
-                        json.dump(per_class, outfile, indent=4)
+                    conf_m = self._final_performance(y_true, y_pred[mc.name])
+
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
 
         else:  # Regular epoch without testing
@@ -629,10 +628,11 @@ class Rack:
         Computes the final performance(s) of the model(s) on the test set. If trained with validation, the weights of
         the epoch achieving the best results are used. Otherwise, the weights of the last epoch are kept for testing.
         """
-        per_class = per_class_performance(y_true, y_pred, self.args.num_classes)
+        #TODO Parametrize the evaluation of final peformance
+
         conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
-        return per_class, conf_m
+        return conf_m
 
     def _get_best_predictions(self, subdir=''):
         """
