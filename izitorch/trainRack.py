@@ -103,10 +103,10 @@ class Rack:
 
         # Basic arguments
         parser.add_argument('--device', default='cuda', help='device to use for tensor computations (cpu/cuda)')
-        parser.add_argument('--res_dir', default='results', help='folder for saving the trained model')
+        parser.add_argument('--res_dir', default='results', help='output folder for checkpoints')
         # parser.add_argument('--resume', default='')  # TODO implement resuming a training
 
-        parser.add_argument('--dataset', default='/home/vsfg/data')
+        parser.add_argument('--dataset', default='', help='path to dataset')
         parser.add_argument('--num_classes', default=None, type=int,
                             help='number of classes in case of classification problem')
         parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
@@ -119,7 +119,7 @@ class Rack:
                             help='If set to 1 each epoch will be tested on a validation set of same length as the test set,'
                                  ' and the best epoch will be used for the final test on a separate test set')
 
-        # Weight saving
+        # Weight saving strategy
         parser.add_argument('--save_last', default=1, type=int,
                             help='If 1 (default), will only save the weights of the last testing epoch')
         parser.add_argument('--save_all', default=0, type=int,
@@ -138,9 +138,9 @@ class Rack:
         # parser.add_argument('--lr_steps', default='',
         #                     help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
 
-        parser.add_argument('--test_epoch', default=10, type=int, help='Test model every that many epochs')
+        parser.add_argument('--test_epoch', default=10, type=int, help='Test model every so many epochs')
         parser.add_argument('--display_step', default=100, type=int,
-                            help='Display progress within one epoch every that many steps')
+                            help='Display progress within one epoch every so many steps')
 
         parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
         parser.add_argument('--grad_clip', default=0, type=float,
@@ -174,10 +174,10 @@ class Rack:
         if self.args.validation and self.args.test_epoch != 1:
             print('[WARNING] Validation requires testing at each epoch, setting test_epoch to 1')
             self.args.test_epoch = 1
-            if (self.args.save_best + self.args.save_all) == 0:
-                print('[WARNING] Validation requires save_all or save_best, setting save_best to 1')
-                self.args.save_best = 1
-                self.args.save_all = 0
+
+        if self.args.validation and ((self.args.save_best + self.args.save_all) == 0):
+            print('[WARNING] Validation requires save_all or save_best, setting save_best to 1')
+            self.args.save_best = 1
 
         if (self.args.save_last + self.args.save_best) > 1:
             print('[WARNING] save_best and save_all are mutually exclusive setting save_all to 0')
@@ -189,7 +189,7 @@ class Rack:
                 self.args.kfold = 3
 
         if self.args.device == 'cuda' and not torch.cuda.is_available():
-            print('[WARNING] No GPU found, setting device to gpu')
+            print('[WARNING] No GPU found, setting device to CPU')
             self.args.device = 'cpu'
 
     ####### Methods for setting the specific elements of the training rack
@@ -201,6 +201,7 @@ class Rack:
     def add_model_configs(self, model_configs):
         """
         Add model configurations to be trained in the current script.
+        As long as they all fit in the memory of the device, multiple models can be trained simultaneously.
         Args:
             model_configs (list): list of trainRack.ModelConfig instances
         """
@@ -229,7 +230,7 @@ class Rack:
     def _prepare_output(self):
         """
         Creates the output directory (specified by the --res_dir parameter), with one sub-folder per model and
-        writes the a summary of the configuration in each of them.
+        writes a summary of the configuration in each of them.
         """
 
         conf = self.to_dict()
@@ -255,6 +256,8 @@ class Rack:
         """
         Prepares the sequence of train/(val)/test loaders that will be used. The sequence will be of length one if
         --k_fold is left to 0 (simple training).
+
+        The split and repartition of the dataset is archived in the output folder in the Dataset_split.pkl file
         """
         if self.args.pin_memory == 1:
             pm = True
@@ -383,13 +386,14 @@ class Rack:
 
             self.args.total_step = len(self.train_loader)
 
-            self._init_weights()
-
             self._init_trainlogs()
 
             self._models_to_device()
 
+            self._init_weights()
+
             for self.current_epoch in range(1, self.args.epochs + 1):
+
                 t0 = time.time()
 
                 train_metrics = self._train_epoch()
@@ -421,11 +425,7 @@ class Rack:
 
         for i, (x, y) in enumerate(self.train_loader):
 
-            try:
-                x = x.to(self.device)
-            except AttributeError:  # dirty fix for extra data
-                for j, input in enumerate(x):
-                    x[j] = input.to(self.device)
+            x = x.to(self.device)
 
             y_true.extend(list(map(int, y)))
             y = y.to(self.device)
@@ -491,7 +491,7 @@ class Rack:
             else:
                 test_metrics = self._test(return_y=False)
 
-            for mc in self.model_configs: # Write trainlog and model weights
+            for mc in self.model_configs:  # Write trainlog and model weights
 
                 self.stats[mc.name][epoch] = {**metrics[mc.name], **test_metrics[mc.name]}  # TODO
                 print('[PROGRESS - {}] Writing checkpoint of epoch {}\{} . . .'.format(mc.name, epoch,
@@ -515,18 +515,18 @@ class Rack:
                                 'optimizer': mc.optimizer.state_dict()},
                                os.path.join(mc.res_dir, subdir, file_name))
 
-            if epoch == self.args.epochs:  #Final epoch
+            if epoch == self.args.epochs:  # Final epoch
 
                 if self.args.validation:
                     y_true, y_pred = self._get_best_predictions(subdir=subdir)
 
-                for mc in self.model_configs: # Final performance on the test set
+                for mc in self.model_configs:  # Final performance on the test set
                     per_class, conf_m = self._final_performance(y_true, y_pred[mc.name])
                     with open(os.path.join(mc.res_dir, subdir, 'per_class_metrics.json'), 'w') as outfile:
                         json.dump(per_class, outfile, indent=4)
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
 
-        else:  #Regular epoch without testing
+        else:  # Regular epoch without testing
             for mc in self.model_configs:
                 self.stats[mc.name][epoch] = metrics[mc.name]
                 print(
@@ -543,9 +543,9 @@ class Rack:
             return_y (bool): If True the method will also return the predicted and true labels on the test set.
         """
         # TODO generalise method and just give a list of metrics as rack parameter
+        # TODO write a more abstract method to iterate on a dataloader, that can serve for both train and test
 
         print('Testing models . . .')
-
 
         # Initialize meters
 
@@ -587,7 +587,7 @@ class Rack:
 
         test_metrics = {}
 
-        for mc in self.model_configs: #Display, and archive best results in case of validation
+        for mc in self.model_configs:  # Display, and archive best results in case of validation
             acc = acc_meter[mc.name].value()[0]
             loss = loss_meter[mc.name].value()[0]
             miou = mIou(y_true, y_pred[mc.name], self.args.num_classes)
@@ -676,6 +676,7 @@ class ModelConfig:
         criterion (torch.nn loss): Instance of loss to use for training.
         optimizer (torch.optim otimizer): Instance of optmizer to use for training.
     """
+
     def __init__(self, name, model=None, criterion=None, optimizer=None):
         self.name = name
         self.model = model
