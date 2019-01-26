@@ -27,7 +27,6 @@ import sys
 
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
-# TODO Remove per class metrics
 
 class Rack:
     """
@@ -45,8 +44,8 @@ class Rack:
         parser (argparse.ArgumentParser): Rack argument parser
         args (argparse.ArgumentParser.args): Parameters retrieved from the argparse menu
         device (torch.device): Device used for computations
-        dataset_train_transforms (torch.utils.data.Dataset): Dataset used for training
-        dataset_test_transforms (torch.utils.data.Dataset): Dataset used for testing ##TODO Clarifiy
+        dataset_train_transforms (torch.utils.data.Dataset): Dataset with transformations active during training
+        dataset_test_transforms (torch.utils.data.Dataset): Dataset with transformations active during testing
         ntrain (int): Number of training samples
         ntest (int): Number of testing samples
         train_loader  (torch.utils.data.DataLoader): Dataloader for training
@@ -60,7 +59,6 @@ class Rack:
 
     def __init__(self):
         """Initiliazes the rack and attaches a basic argparse menu to it."""
-        torch.manual_seed(1)  # TODO random seed as an option
         self.parser = None
         self.args = None
         self.device = None
@@ -104,6 +102,8 @@ class Rack:
         # Basic arguments
         parser.add_argument('--device', default='cuda', help='device to use for tensor computations (cpu/cuda)')
         parser.add_argument('--res_dir', default='results', help='output folder for checkpoints')
+        parser.add_argument('--rdm_seed', default=None, type=int,
+                            help='random seed for dataset split and weight initialization (optional)')
         # parser.add_argument('--resume', default='')  # TODO implement resuming a training
 
         parser.add_argument('--dataset', default='', help='path to dataset')
@@ -269,7 +269,9 @@ class Rack:
         indices = list(range(len(self.dataset_train_transforms)))
 
         if self.args.shuffle:
-            np.random.seed(128)  # TODO random seed as an option
+            if self.args.rdm_seed is not None:
+                print('[DATASET] Setting random seed to {}'.format(self.args.rdm_seed))
+                np.random.seed(self.args.rdm_seed)
             np.random.shuffle(indices)
 
         # TRAIN / TEST SPLIT
@@ -351,12 +353,16 @@ class Rack:
 
     def _init_weights(self):
         """Initializes the weights of the rack's models."""
+
+        if self.args.rdm_seed is not None:
+            torch.manual_seed(self.args.rdm_seed)
+
         for mc in self.model_configs:
             mc.model = mc.model.apply(weight_init)
 
     ####### Methods for execution
 
-    def launch(self):  # TODO
+    def launch(self):
         """
         Main method of the module: Prepares training (check arguments consistency, prepare output directories, split
         dataset and retrieve dataloaders) and performs training and testing according to the arguments specified in the
@@ -393,7 +399,6 @@ class Rack:
             self._init_weights()
 
             for self.current_epoch in range(1, self.args.epochs + 1):
-
                 t0 = time.time()
 
                 train_metrics = self._train_epoch()
@@ -405,7 +410,7 @@ class Rack:
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
                 print('####################################################')
 
-    def _train_epoch(self):  # TODO
+    def _train_epoch(self):
         """
         Trains the model(s) on one epoch and displays the evolution of the training metrics.
         Returns a dictionary with the performance metrics over the whole epoch.
@@ -628,7 +633,7 @@ class Rack:
         Computes the final performance(s) of the model(s) on the test set. If trained with validation, the weights of
         the epoch achieving the best results are used. Otherwise, the weights of the last epoch are kept for testing.
         """
-        #TODO Parametrize the evaluation of final peformance
+        # TODO Parametrize the evaluation of final performance
 
         conf_m = conf_mat(y_true, y_pred, self.args.num_classes)
 
