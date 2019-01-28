@@ -165,6 +165,24 @@ class Rack:
         """Displays the values of the arguments """
         print(self.args)
 
+    def set_args(self, arg_values):
+        """Sets the rack's arguments directly in the script (by-passes the argparse menu)
+
+        Args:
+            arg_values (dict) : dictionary of arguments (arg_name:arg_value). The argument names are those defined
+            in the basic argparse menu.
+
+        The same default values as in the argparse menu will be used, if not specified:
+        {'device': 'cuda','res_dir': 'results','rdm_seed': None,'dataset': '','num_classes': None,'num_workers': 6,
+        'pin_memory': 0,'train_ratio': 0.8,'kfold': 0,'validation': 0,'save_last': 1,'save_all': 0,'save_best': 0,
+        'metric_best': 'IoU','epochs': 1000,'batch_size': 128,'lr': 0.001,'test_epoch': 10,'display_step': 100,
+        'shuffle': True,'grad_clip': 0}
+        """
+        default_args = vars(self.parser.parse_known_args()[0])
+        args = default_args.update(arg_values)
+
+        self.args = argparse.Namespace(**args)
+
     def _check_args_consistency(self):
         """Performs several sanity checks on the arguments passed to the rack.
         Inconsistencies are automatically resolved, and a warning is prompted, but no exception is thrown."""
