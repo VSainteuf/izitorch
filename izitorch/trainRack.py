@@ -179,9 +179,9 @@ class Rack:
         'shuffle': True,'grad_clip': 0}
         """
         default_args = vars(self.parser.parse_known_args()[0])
-        args = default_args.update(arg_values)
 
-        self.args = argparse.Namespace(**args)
+        default_args.update(arg_values)
+        self.args = argparse.Namespace(**default_args)
 
     def _check_args_consistency(self):
         """Performs several sanity checks on the arguments passed to the rack.
