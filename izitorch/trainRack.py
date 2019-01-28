@@ -30,11 +30,14 @@ import sys
 
 class Rack:
     """
-    Pytorch model training rack. It implements an argparse menu to set the parameters of the training program, and the
-    methods to execute it. The class is meant to be used in a script that is then called in command line (see examples).
-    After initialisation, custom arguments can be added to the argparse menu.
+    Pytorch model training rack. It implements a menu to set the parameters of the training program, and the
+    methods to execute it. The class can either be used to design a script that will be called from the command line,
+    or to produce a stand-alone script. In the first case, the argparse menu allows to pass the necessary arguments
+    (Custom arguments can be added to the menu). In the second case the arguments can be directly passed as a dictionary
+    inside the script.
+
     The neccessary steps to launch a training are as follows:
-        - Parse the arguments (rack.parse_args())
+        - Parse the arguments (rack.parse_args()) or set them manually inside the script (rack.set_args(args))
         - Set the dataset (rack.set_dataset(dataset))
         - Set the model configuration(s) (rack.add_model_configs(configs))
         (the rack supports multi-model training i.e. training multiple models on the same dataset at the same time)
