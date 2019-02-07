@@ -23,7 +23,7 @@ import json
 import pickle as pkl
 import os
 import sys
-
+from collections.abc import  Iterable
 
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
@@ -451,10 +451,11 @@ class Rack:
 
         for i, (x, y) in enumerate(self.train_loader):
 
-            if not type(x) == list:
-                x = x.to(self.device)
-            else:
+            if isinstance(x, Iterable):
                 x = [c.to(self.device) for c in x]
+            else:
+                x = x.to(self.device)
+
 
             y_true.extend(list(map(int, y)))
             y = y.to(self.device)
@@ -597,10 +598,10 @@ class Rack:
 
             y_true.extend(list(map(int, y)))
 
-            if not type(x) == list:
-                x = x.to(self.device)
-            else:
+            if isinstance(x, Iterable):
                 x = [c.to(self.device) for c in x]
+            else:
+                x = x.to(self.device)
             y = y.to(self.device)
 
             prediction = {}
