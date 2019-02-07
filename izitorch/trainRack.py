@@ -17,6 +17,7 @@ from sklearn import model_selection
 from izitorch.metrics import mIou, conf_mat
 from izitorch.utils import weight_init, get_nparams
 
+import pkg_resources
 import argparse
 import time
 import json
@@ -28,6 +29,7 @@ from collections.abc import Iterable
 
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
+# TODO check if shuffle is different at each epoch
 
 class Rack:
     """
@@ -81,7 +83,7 @@ class Rack:
         self.best_performance = None
 
         self.model_configs = []
-        self._set_basic_menu()
+        self._set_default_menu()
 
     def to_dict(self):
         """Summarizes the rack's configuration in the form of a dictionary"""
@@ -97,60 +99,17 @@ class Rack:
         return output
 
     ####### Methods for the options menu
-    def _set_basic_menu(self):
+    def _set_default_menu(self):
         """
         Sets a basic argparse menu with commonly used arguments
         """
-        parser = argparse.ArgumentParser()
+        d = dict(zip(('int','float','str'),(int,float,str)))
+        default  = json.load(open(pkg_resources.resource_filename('izitorch','default_config.json')))
 
-        # Basic arguments
-        parser.add_argument('--device', default='cuda', help='device to use for tensor computations (cpu/cuda)')
-        parser.add_argument('--res_dir', default='results', help='output folder for checkpoints')
-        parser.add_argument('--rdm_seed', default=None, type=int,
-                            help='random seed for dataset split and weight initialization (optional)')
-        # parser.add_argument('--resume', default='')  # TODO implement resuming a training
+        self.parser = argparse.ArgumentParser()
 
-        parser.add_argument('--dataset', default='', help='path to dataset')
-        parser.add_argument('--num_classes', default=None, type=int,
-                            help='number of classes in case of classification problem')
-        parser.add_argument('--num_workers', default=6, type=int, help='number of workers for the data loader')
-        parser.add_argument('--pin_memory', default=0, type=int, help='whether to use pin_memory for the data loader')
-
-        parser.add_argument('--train_ratio', default=.8, type=float, help='ratio for train/test split (when no k-fold)')
-        parser.add_argument('--kfold', default=0, type=int,
-                            help='If non zero, number of folds for k-fold training, and overwrites train_ratio argument')
-        parser.add_argument('--validation', default=0, type=int,
-                            help='If set to 1 each epoch will be tested on a validation set of same length as the test set,'
-                                 ' and the best epoch will be used for the final test on a separate test set')
-
-        # Weight saving strategy
-        parser.add_argument('--save_last', default=1, type=int,
-                            help='If 1 (default), will only save the weights of the last testing epoch')
-        parser.add_argument('--save_all', default=0, type=int,
-                            help='If 1, will save the weights of all testing steps.')
-        parser.add_argument('--save_best', default=0, type=int,
-                            help='If 1, will only save the weights of the best epoch')
-        parser.add_argument('--metric_best', default='IoU', type=str,
-                            help='metric used to rank the epoch performances, chose between acc / loss / IoU(default)')
-
-        # Optimization parameters
-        parser.add_argument('--epochs', default=1000, type=int)
-        parser.add_argument('--batch_size', default=128, type=int, help='Batch size')
-        parser.add_argument('--lr', default=1e-3, type=float, help='Initial learning rate')
-        # parser.add_argument('--lr_decay', default=1, type=float,   TODO
-        #                     help='Multiplicative factor used on learning rate at lr_steps')
-        # parser.add_argument('--lr_steps', default='',
-        #                     help='List of epochs where the learning rate is decreased by `lr_decay`, separate with a +')
-
-        parser.add_argument('--test_epoch', default=10, type=int, help='Test model every so many epochs')
-        parser.add_argument('--display_step', default=100, type=int,
-                            help='Display progress within one epoch every so many steps')
-
-        parser.add_argument('--shuffle', default=True, help='Shuffle dataset')
-        parser.add_argument('--grad_clip', default=0, type=float,
-                            help='If nonzero, absolute value of the gradients will be clipped at this value')
-
-        self.parser = parser
+        for name, setting in default.items():
+            self.parser.add_argument('--{}'.format(name), default=setting['default'], type=d[setting['type']], help = setting['help'])
 
     def add_arguments(self, arg_dict):
         """

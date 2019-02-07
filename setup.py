@@ -7,5 +7,6 @@ setup(name='izitorch',
       author='VSainteuf',
       license='MIT',
       packages=['izitorch'],
+      package_data = {'izitorch':['default_config.json']},
       zip_safe=False,
       install_requires=['torch','torchnet','numpy'])
