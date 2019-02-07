@@ -451,7 +451,7 @@ class Rack:
 
         for i, (x, y) in enumerate(self.train_loader):
 
-            if isinstance(x, Iterable):
+            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
                 x = [c.to(self.device) for c in x]
             else:
                 x = x.to(self.device)
@@ -598,7 +598,7 @@ class Rack:
 
             y_true.extend(list(map(int, y)))
 
-            if isinstance(x, Iterable):
+            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
                 x = [c.to(self.device) for c in x]
             else:
                 x = x.to(self.device)
