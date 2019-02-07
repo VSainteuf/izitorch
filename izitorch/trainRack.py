@@ -597,7 +597,10 @@ class Rack:
 
             y_true.extend(list(map(int, y)))
 
-            x = x.to(self.device)
+            if not type(x) == list:
+                x = x.to(self.device)
+            else:
+                x = [c.to(self.device) for c in x]
             y = y.to(self.device)
 
             prediction = {}
