@@ -23,7 +23,8 @@ import json
 import pickle as pkl
 import os
 import sys
-from collections.abc import  Iterable
+from collections.abc import Iterable
+
 
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
@@ -456,7 +457,6 @@ class Rack:
             else:
                 x = x.to(self.device)
 
-
             y_true.extend(list(map(int, y)))
             y = y.to(self.device)
 
@@ -493,6 +493,7 @@ class Rack:
                                   acc_meter[mc.name].value()[0],
                                   elapsed))
                     ta = tb
+
 
         metrics = {}
         for mc in self.model_configs:
