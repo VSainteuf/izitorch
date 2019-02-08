@@ -101,15 +101,17 @@ class Rack:
     ####### Methods for the options menu
     def _set_default_menu(self):
         """
-        Sets a basic argparse menu with commonly used arguments
+        Sets a basic argparse menu with commonly used arguments, the list of default arguments and their default values
+        are found in the default_config.json file
         """
-        d = dict(zip(('int','float','str'),(int,float,str)))
-        default  = json.load(open(pkg_resources.resource_filename('izitorch','default_config.json')))
+        d = dict(zip(('int', 'float', 'str'), (int, float, str)))
+        default = json.load(open(pkg_resources.resource_filename('izitorch', 'default_config.json')))
 
         self.parser = argparse.ArgumentParser()
 
         for name, setting in default.items():
-            self.parser.add_argument('--{}'.format(name), default=setting['default'], type=d[setting['type']], help = setting['help'])
+            self.parser.add_argument('--{}'.format(name), default=setting['default'], type=d[setting['type']],
+                                     help=setting['help'])
 
     def add_arguments(self, arg_dict):
         """
@@ -452,7 +454,6 @@ class Rack:
                                   acc_meter[mc.name].value()[0],
                                   elapsed))
                     ta = tb
-
 
         metrics = {}
         for mc in self.model_configs:
