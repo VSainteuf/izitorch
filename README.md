@@ -26,7 +26,7 @@ Requirements:
 The trainRack allows one to produce a customizable training script in only two steps: 
 provide a dataset, and a model configuration.
 
-The Rack class then takes care of the common mecanisms of training (forward pass, back-propagation, model testing, 
+The Rack class then takes care of the common mechanisms of training (forward pass, back-propagation, model testing, 
 checkpoints etc ...).
 
 The basic structure of a script using the trainRack should thus be:
@@ -56,7 +56,7 @@ rack.launch()
 
 
 ### Rack parameters
-Though it manages all the training mecanics under the hood, the Rack is customizable thanks to the parameters menu. 
+Though it manages all the training mechanics under the hood, the Rack is customizable with the parameters menu. 
 
 #### Default parameters
 The following default list of parameters is implemented in the Rack class:
@@ -67,7 +67,7 @@ The following default list of parameters is implemented in the Rack class:
 - num_classes: number of classes (in case of classification problem)
 - num_workers: number of workers for DataLoader
 - pin_memory: whether to use pin memory for DataLoader
-- train_ratio: ratio for the train/test split (when no k-fold)
+- train_ratio: ratio of total number of samples used as train set (when no k-fold)
 - kfold: If non zero, number of folds to execute
 - validation: Whether to use a separate validation test to test each epoch
 - save_last: Save only the last epoch's weights
@@ -87,7 +87,7 @@ Additional custom arguments can be added to the menu using the method ```rack.ad
 dictionary specifying the names, types, and default values of the additional arguments. 
 
 #### Passing the parameters
-The values chosen for the default and custom parameters can be passed in two ways. 
+The values chosen for the parameters can be passed in two ways: 
 1. From the command line, when the script is called\
 ```python train_model.py --batch_size 32 --lr 0.005 --save_all 1 --epochs 1000```\
 A Rack instance comes with an argparse menu. Calling the ```rack.parse_args()``` method at the beginning 
@@ -107,6 +107,20 @@ The output of the Rack in the directory specified by ```--res_dir``` comprises o
 - A pickle file with the final performance metrics (e.g. the final confusion matrix in case of classification)
 
 
-#### Multi-model
+### Model Configuration and multi-model training
+
+Model configurations should be formatted using the ```trainRack.ModelConfig``` class. As seen in the example above,
+a configuration is defined by a name, a model instance, a criterion and an optimizer. 
+The Rack is designed to support multi-model training, i.e. one can attach a list of ModelConfigs to it with the
+ ```rack.add_model_configs(confs)``` method. Provided that they all fit in memory and that they are trained on the same
+ dataset, the Rack will train all the models simultaneously. 
+ 
+ **Important note** the computations for each model are not parallelized. For each batch of the DataLoader, the Rack will
+ sequentially execute the forward-backward process for each model. This can be useful for small models when data loading
+  is the most time consuming step, and you want to make the most of it! 
 
 
+### Dataset
+
+The dataset attached to the rack via  ```rack.set_dataset(dataset)``` should inherit 
+from the  ```torch.utils.data.Dataset``` class. 
