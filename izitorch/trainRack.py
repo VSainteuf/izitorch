@@ -29,7 +29,8 @@ from collections.abc import Iterable
 
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
-# TODO check if shuffle is different at each epoch
+# TODO Parallelise model training in multi-model case (if reasonable)
+
 
 class Rack:
     """
