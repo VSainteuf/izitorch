@@ -1,3 +1,8 @@
+"""
+Example script using the trainRack, used for testing.
+(No animals were harmed in the process)
+"""
+
 import torch.nn as nn
 import torch
 from torch.utils import data
