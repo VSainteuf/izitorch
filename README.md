@@ -53,3 +53,60 @@ rack.set_dataset(Dataset())
 rack.launch()
 
 ```
+
+
+### Rack parameters
+Though it manages all the training mecanics under the hood, the Rack is customizable thanks to the parameters menu. 
+
+#### Default parameters
+The following default list of parameters is implemented in the Rack class:
+- device: device to be used for computation (cpu/cuda)
+- res_dir: path to the directory where the checkpoints should be stored
+- rdm_seed: Random seed for dataset partitioning
+- dataset: Path to dataset file/folder (if required)
+- num_classes: number of classes (in case of classification problem)
+- num_workers: number of workers for DataLoader
+- pin_memory: whether to use pin memory for DataLoader
+- train_ratio: ratio for the train/test split (when no k-fold)
+- kfold: If non zero, number of folds to execute
+- validation: Whether to use a separate validation test to test each epoch
+- save_last: Save only the last epoch's weights
+- save_all: Save all the epochs' weights
+- save_best: Save only the best epoch's weights
+- metric_best: Metric to use to assess best epoch (loss/acc/IoU)
+- epochs: total number of epochs of training
+- batch_size: batch size
+- lr: learning rate
+- test_epoch: number of epochs between tests
+- display_step: number of training steps between two displays of progress
+- shuffle: shuffle dataset
+- grad_clip: If non zero, gradients will be clipped at this value
+
+#### Custom parameters
+Additional custom arguments can be added to the menu using the method ```rack.add_arguments(args)``` where args is a 
+dictionary specifying the names, types, and default values of the additional arguments. 
+
+#### Passing the parameters
+The values chosen for the default and custom parameters can be passed in two ways. 
+1. From the command line, when the script is called\
+```python train_model.py --batch_size 32 --lr 0.005 --save_all 1 --epochs 1000```\
+A Rack instance comes with an argparse menu. Calling the ```rack.parse_args()``` method at the beginning 
+of your script will retrieve the parameters passed in the command line call and store them in the ```rack.args```
+ attribute. All the parameters that are not specified will be set at their default value (see default_config.json).
+
+2. Directly inside the script\
+The parameters can also be set inside the script using the ```rack.set_args(args)``` method, where args is a dictionnary 
+specifying the values of the parameters. 
+
+### Rack outputs
+The output of the Rack in the directory specified by ```--res_dir``` comprises of:
+
+- A configuration file conf.json keeping track of the parameters passed to the training script.
+- The checkpoints of the model (weights, and optimizer state)
+- A json trainlog that is updated at each epoch
+- A pickle file with the final performance metrics (e.g. the final confusion matrix in case of classification)
+
+
+#### Multi-model
+
+
