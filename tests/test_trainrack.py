@@ -2,12 +2,11 @@ import subprocess
 import shutil
 import pytest
 
-epochs = 2
+epochs = 4
 batch_size = 32
-test_epoch = 1
+test_epoch = 2
 num_workers = 6
 lr = 0.001
-kfold = 0
 num_classes = 2
 
 

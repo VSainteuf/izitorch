@@ -1,6 +1,5 @@
 torch
 torchnet
 numpy
-tqdm
 scipy
 scikit-learn

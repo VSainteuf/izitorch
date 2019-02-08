@@ -1,8 +1,13 @@
+"""
+Example script using the trainRack, used for testing.
+(No animals were harmed in the process)
+"""
+
 import torch.nn as nn
 import torch
 from torch.utils import data
 
-from izitorch import trainRack
+from izitorch.trainRack import Rack, ModelConfig
 
 
 class Model(nn.Module):
@@ -16,10 +21,8 @@ class Model(nn.Module):
         return nn.Softmax(dim=-1)(self.cla(hn[-1, :, :]))
 
 
-
-
 class RandomDataset(data.Dataset):
-    def __init__(self, nsamp=10000, seqlen=5, nfeat=10, nclass=2):
+    def __init__(self, nsamp=1000, seqlen=5, nfeat=10, nclass=2):
         super(RandomDataset, self).__init__()
         self.nsamp = nsamp
         self.nfeat = nfeat
@@ -35,10 +38,8 @@ class RandomDataset(data.Dataset):
 
 arg_dict = {'hidden_size': {'default': 32, 'type': int}}
 
-
-
 if __name__ == '__main__':
-    rack = trainRack.Rack()
+    rack = Rack()
 
     rack.add_arguments(arg_dict)
     rack.parse_args()
@@ -46,20 +47,14 @@ if __name__ == '__main__':
     m1 = Model(rack.args.hidden_size, 10, 2)
     m2 = Model(rack.args.hidden_size, 10, 2)
 
-    conf = {
-        'model1': {
-            'model': m1,
-            'criterion': nn.CrossEntropyLoss(),
-            'optimizer': torch.optim.Adam(m1.parameters())
-        },
-        'model2': {
-            'model': m2,
-            'criterion': nn.CrossEntropyLoss(),
-            'optimizer': torch.optim.Adam(m2.parameters())
-        }
-    }
+    confs = [
+        ModelConfig('model1', model=m1, criterion=nn.CrossEntropyLoss(),
+                    optimizer=torch.optim.Adam(m1.parameters())),
+        ModelConfig('model2', model=m1, criterion=nn.CrossEntropyLoss(),
+                    optimizer=torch.optim.Adam(m2.parameters()))
+    ]
 
-    rack.add_model_configs(conf)
+    rack.add_model_configs(confs)
 
     rack.set_dataset(RandomDataset())
 
