@@ -1,5 +1,6 @@
 """
 Set of simple image transformations, similar to what can be found in torchvision but that work with mutlispectral data
+(more than 3 or 4 channels)
 """
 
 from torch import tensor
@@ -16,15 +17,17 @@ def to_tensor(a):
 
 
 def horizontal_flip(a):
-    return np.flip(a, axis=1).copy()  # to avoid negative stride problem when casting to tensor
+    """Flips a (C,H,W) image horizontally"""
+    return np.flip(a, axis=0).copy()  # to avoid negative stride problem when casting to tensor
 
 
 def vertical_flip(a):
-    return np.flip(a,
-                   axis=0).copy()  ##TODO this looks like it assumes channel last, make sure coherent with cnn scripts
+    """Flips a (C,H,W) image vertically"""
+    return np.flip(a, axis=1).copy()
 
 
 def random_rotation(a, angle=180, nrange=100):
+    """Randomly rotates a (H,W,C) image. The angle is radomly chosen between -angle and + angle"""
     if not type(angle) == list:
         angle = [i for i in range(-angle, angle, (2 * angle) // nrange)]
     alpha = np.random.choice(angle)
@@ -47,7 +50,8 @@ def space_shuffle(a):
 
 
 def random_sequence_rotation(a, angle=180, nrange=100):
-    """ Assumes H,W as last dimensions (channel first)
+    """ Rotates a tensor along the two last dimensions (H,W).
+    Should be used to rotate each element of an image sequence using the same angle.
     """
     if not type(angle) == list:
         angle = [i for i in range(-angle, angle, (2 * angle) // nrange)]
