@@ -32,6 +32,7 @@ checkpoints etc ...).
 The basic structure of a script using the trainRack should thus be:
 
 ```Python3
+import torch
 from izitorch.trainRack import Rack, ModelConfig
 
 from mymodels import Model
@@ -43,7 +44,7 @@ rack.parse_args()
 
 m = Model()
 
-conf = ModelConfig(name='model1', model=m, criterion=nn.CrossEntropyLoss(), 
+conf = ModelConfig(name='model1', model=m, criterion=torch.nn.CrossEntropyLoss(), 
     optimizer=torch.optim.Adam(m.parameters(), lr = rack.args.lr))
 
 rack.add_model_configs([conf])
