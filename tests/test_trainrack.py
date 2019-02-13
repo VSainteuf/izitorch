@@ -1,6 +1,7 @@
 import subprocess
 import shutil
 import pytest
+import os
 
 epochs = 4
 batch_size = 32
@@ -9,9 +10,10 @@ num_workers = 6
 lr = 0.001
 num_classes = 2
 
+folder = os.path.dirname(os.path.abspath(__file__))
 
 def run_training(save_mode='last', kfold=0, validation=0, device = None):
-    cmd = ['python', 'guinea_pig.py']
+    cmd = ['python', os.path.join(folder,'guinea_pig.py')]
     cmd.extend(['--num_classes', num_classes])
 
     cmd.extend(['--epochs', epochs])
