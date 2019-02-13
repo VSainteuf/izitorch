@@ -125,3 +125,9 @@ The Rack is designed to support multi-model training, i.e. one can attach a list
 
 The dataset attached to the rack via  ```rack.set_dataset(dataset)``` should inherit 
 from the  ```torch.utils.data.Dataset``` class. 
+
+
+## Other comments
+
+- izitorch was developped on a classification use case, but should be adaptable to other types of learning tasks. 
+- The package also contains a module to conveniently explore the training outputs (trainlogs, and performance)
