@@ -2,6 +2,8 @@
 
 *A high-level wrapper for PyTorch.* 
 
+[![Build Status](https://travis-ci.com/VSainteuf/izitorch.svg?branch=master)](https://travis-ci.com/VSainteuf/izitorch)
+
 The main module is  ```trainRack ``` which implements a Rack class to abstract most of  the common 
 steps involved in training deep learning models on PyTorch. This class allows one to produce a **training script in just
 a few steps**, while keeping a good level of customization. This class also supports **multi-model training** i.e. 
