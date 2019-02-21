@@ -653,7 +653,11 @@ class Rack:
         for (x, y) in self.test_loader:
 
             y_true.extend(list(map(int, y)))
-            x = x.to(self.device)
+
+            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
+                x = [c.to(self.device) for c in x]
+            else:
+                x = x.to(self.device)
 
             for mc in self.model_configs:
                 with torch.no_grad():
