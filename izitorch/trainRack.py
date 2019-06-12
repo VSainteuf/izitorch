@@ -517,6 +517,9 @@ class Rack:
 
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
 
+                    with open(os.path.join(mc.res_dir, subdir, 'best_epoch.json'),'w') as file:
+                        file.write(json.dumps(self.best_performance[mc.name], indent=4))
+
         else:  # Regular epoch without testing
             for mc in self.model_configs:
                 self.stats[mc.name][epoch] = metrics[mc.name]
