@@ -394,6 +394,12 @@ class Rack:
                 print('[PROGRESS] Epoch duration : {}'.format(t1 - t0))
                 print('####################################################')
 
+    def _recursive_todevice(self, x):
+        if isinstance(x, torch.Tensor):
+            return x.to(self.device)
+        else:
+            return [self._recursive_todevice(c) for c in x]
+
     def _train_epoch(self):
         """
         Trains the model(s) on one epoch and displays the evolution of the training metrics.
@@ -413,11 +419,7 @@ class Rack:
         ta = time.time()
 
         for i, (x, y) in enumerate(self.train_loader):
-
-            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
-                x = [c.to(self.device) for c in x]
-            else:
-                x = x.to(self.device)
+            x = self._recursive_todevice(x)
 
             y_true.extend(list(map(int, y)))
             y = y.to(self.device)
@@ -562,11 +564,7 @@ class Rack:
         for (x, y) in loader:
 
             y_true.extend(list(map(int, y)))
-
-            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
-                x = [c.to(self.device) for c in x]
-            else:
-                x = x.to(self.device)
+            x = self._recursive_todevice(x)
             y = y.to(self.device)
 
             prediction = {}
@@ -657,10 +655,8 @@ class Rack:
 
             y_true.extend(list(map(int, y)))
 
-            if isinstance(x, Iterable) and not isinstance(x, torch.Tensor):
-                x = [c.to(self.device) for c in x]
-            else:
-                x = x.to(self.device)
+            x = self._recursive_todevice(x)
+
 
             for mc in self.model_configs:
                 with torch.no_grad():
