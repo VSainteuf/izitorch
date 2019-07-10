@@ -10,6 +10,7 @@ problems.
 
 import torch
 from torch.utils import data
+from torch.utils.tensorboard.writer import SummaryWriter
 import torchnet as tnt
 import numpy as np
 from sklearn import model_selection
@@ -330,6 +331,11 @@ class Rack:
             self.stats[mc.name] = {}
             self.best_performance[mc.name] = {'epoch': 0, 'IoU': 0, 'acc': 0, 'loss': sys.float_info.max}
 
+        if self.args.tensorboard == 1:
+            self.writers = {}
+            for mc in self.model_configs:
+                self.writers[mc.name] = SummaryWriter(log_dir=mc.res_dir)
+
     def _models_to_device(self):
         """Sends the models to the specified device."""
         for mc in self.model_configs:
@@ -448,6 +454,16 @@ class Rack:
                         p.grad.data.clamp_(-self.args.grad_clip, self.args.grad_clip)
 
                 mc.optimizer.step()
+
+                if self.args.tensorboard == 1:
+                    self.writers[mc.name].add_scalar('train_loss',loss[mc.name], global_step=i + self.current_epoch * len(self.train_loader))
+                    self.writers[mc.name].add_scalar('train_acc',acc_meter[mc.name].value()[0], global_step=i + self.current_epoch * len(self.train_loader))
+
+                    #for tag, value in mc.model.named_parameters():
+                    #    tag = tag.replace('.', '/')
+                    #    self.writers[mc.name].add_histogram(tag, value,global_step=i + self.current_epoch * len(self.train_loader))
+                    #    self.writers[mc.name].add_histogram(tag+ '/grad', value.grad.data,global_step=i + self.current_epoch * len(self.train_loader))
+
 
                 if (i + 1) % self.args.display_step == 0:
                     tb = time.time()

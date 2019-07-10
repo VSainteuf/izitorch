@@ -1,65 +1,112 @@
 {
-  "device":  {
-    "default":"cuda" , "type":"str" , "help":"device to use for tensor computations (cpu/cuda)"
+  "device": {
+    "default": "cuda",
+    "type": "str",
+    "help": "device to use for tensor computations (cpu/cuda)"
   },
-  "res_dir":  {
-    "default":"results" , "type": "str"  , "help":"output folder for checkpoints"
+  "res_dir": {
+    "default": "results",
+    "type": "str",
+    "help": "output folder for checkpoints"
   },
   "rdm_seed": {
-    "default": null  , "type": "int"   , "help":"random seed for dataset split and weight initialization (optional)"
+    "default": null,
+    "type": "int",
+    "help": "random seed for dataset split and weight initialization (optional)"
   },
   "dataset": {
-    "default": ""  , "type": "str"  , "help":"path to dataset"
+    "default": "",
+    "type": "str",
+    "help": "path to dataset"
   },
   "num_classes": {
-    "default": null  , "type":"int"   , "help": "number of classes in case of classification problem"
+    "default": null,
+    "type": "int",
+    "help": "number of classes in case of classification problem"
   },
   "num_workers": {
-    "default": 6 , "type":"int"   , "help":"number of workers for the data loader"
+    "default": 6,
+    "type": "int",
+    "help": "number of workers for the data loader"
   },
   "pin_memory": {
-    "default": 0  , "type":"int"   , "help":"whether to use pin_memory for the data loader"
+    "default": 0,
+    "type": "int",
+    "help": "whether to use pin_memory for the data loader"
   },
   "train_ratio": {
-    "default":0.8  , "type":"float"   , "help":"ratio for train/test split (when no k-fold)"
+    "default": 0.8,
+    "type": "float",
+    "help": "ratio for train/test split (when no k-fold)"
   },
   "kfold": {
-    "default":0  , "type":"int"  , "help":"If non zero, number of folds for k-fold training, and overwrites train_ratio argument"
+    "default": 0,
+    "type": "int",
+    "help": "If non zero, number of folds for k-fold training, and overwrites train_ratio argument"
   },
   "validation": {
-    "default":0  , "type":"int"  , "help": "If set to 1 each epoch will be tested on a validation set of same length as the test set and the best epoch will be used for the final test on a separate test set"
+    "default": 0,
+    "type": "int",
+    "help": "If set to 1 each epoch will be tested on a validation set of same length as the test set and the best epoch will be used for the final test on a separate test set"
   },
   "save_last": {
-    "default":1  , "type":"int"   , "help": "If 1 (default), will only save the weights of the last testing epoch"
+    "default": 1,
+    "type": "int",
+    "help": "If 1 (default), will only save the weights of the last testing epoch"
   },
   "save_all": {
-    "default":0   , "type":"int"   , "help":"If 1, will save the weights of all testing steps."
+    "default": 0,
+    "type": "int",
+    "help": "If 1, will save the weights of all testing steps."
   },
   "save_best": {
-    "default":0   , "type":"int"   , "help":"If 1, will only save the weights of the best epoch"
+    "default": 0,
+    "type": "int",
+    "help": "If 1, will only save the weights of the best epoch"
   },
   "metric_best": {
-    "default": "IoU"  , "type":"str"   , "help":"metric used to rank the epoch performances, chose between acc / loss / IoU(default)"
+    "default": "IoU",
+    "type": "str",
+    "help": "metric used to rank the epoch performances, chose between acc / loss / IoU(default)"
   },
   "epochs": {
-    "default":100  , "type":"int"   , "help": "total number of training epochs"
+    "default": 100,
+    "type": "int",
+    "help": "total number of training epochs"
   },
   "batch_size": {
-    "default":32   , "type":"int"   , "help": "batch size"
+    "default": 32,
+    "type": "int",
+    "help": "batch size"
   },
   "lr": {
-    "default": 0.001  , "type":"float"  , "help": "learning rate"
+    "default": 0.001,
+    "type": "float",
+    "help": "learning rate"
   },
   "test_epoch": {
-    "default":10  , "type":"int"   , "help": "Test model every so many epochs"
+    "default": 10,
+    "type": "int",
+    "help": "Test model every so many epochs"
   },
   "display_step": {
-    "default":5  , "type":"int"   , "help": "Display progress within one epoch every so many steps"
+    "default": 5,
+    "type": "int",
+    "help": "Display progress within one epoch every so many steps"
   },
   "shuffle": {
-    "default":1  , "type":"int"   , "help": "Shuffle dataset"
+    "default": 1,
+    "type": "int",
+    "help": "Shuffle dataset"
   },
   "grad_clip": {
-    "default":0  , "type":"int"   , "help": "If nonzero, absolute value of the gradients will be clipped at this value"
+    "default": 0,
+    "type": "int",
+    "help": "If nonzero, absolute value of the gradients will be clipped at this value"
+  },
+  "tensorboard":{
+    "default": 0,
+    "type": "int",
+    "help": "If 1 the trainrack will keep tensorboard logs"
   }
 }
