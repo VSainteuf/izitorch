@@ -334,7 +334,11 @@ class Rack:
         if self.args.tensorboard == 1:
             self.writers = {}
             for mc in self.model_configs:
-                self.writers[mc.name] = SummaryWriter(log_dir=mc.res_dir)
+                if self.args.kfold == 0:
+                    self.writers[mc.name] = [SummaryWriter(log_dir=mc.res_dir)]
+                else:
+                    self.writers[mc.name] = [SummaryWriter(log_dir=os.path.join(mc.res_dir, 'FOLD_{}'.format(i + 1)))
+                                             for i in range(self.args.kfold)]
 
     def _models_to_device(self):
         """Sends the models to the specified device."""
@@ -368,6 +372,7 @@ class Rack:
 
         for i, loaders in enumerate(loader_seq):
 
+            self.current_fold = i
             if self.args.validation:
                 self.train_loader, self.validation_loader, self.test_loader = loaders
             else:
@@ -456,14 +461,18 @@ class Rack:
                 mc.optimizer.step()
 
                 if self.args.tensorboard == 1:
-                    self.writers[mc.name].add_scalar('train_loss',loss[mc.name], global_step=i + self.current_epoch * len(self.train_loader))
-                    self.writers[mc.name].add_scalar('train_acc',acc_meter[mc.name].value()[0], global_step=i + self.current_epoch * len(self.train_loader))
+                    if i > 0:
+                        self.writers[mc.name][self.current_fold].add_scalar('train_loss', loss[mc.name],
+                                                                            global_step=i + self.current_epoch * len(
+                                                                                self.train_loader))
+                        self.writers[mc.name][self.current_fold].add_scalar('train_acc', acc_meter[mc.name].value()[0],
+                                                                            global_step=i + self.current_epoch * len(
+                                                                                self.train_loader))
 
-                    #for tag, value in mc.model.named_parameters():
+                    # for tag, value in mc.model.named_parameters():
                     #    tag = tag.replace('.', '/')
                     #    self.writers[mc.name].add_histogram(tag, value,global_step=i + self.current_epoch * len(self.train_loader))
                     #    self.writers[mc.name].add_histogram(tag+ '/grad', value.grad.data,global_step=i + self.current_epoch * len(self.train_loader))
-
 
                 if (i + 1) % self.args.display_step == 0:
                     tb = time.time()
@@ -535,7 +544,7 @@ class Rack:
 
                     pkl.dump(conf_m, open(os.path.join(mc.res_dir, subdir, 'confusion_matrix.pkl'), 'wb'))
 
-                    with open(os.path.join(mc.res_dir, subdir, 'best_epoch.json'),'w') as file:
+                    with open(os.path.join(mc.res_dir, subdir, 'best_epoch.json'), 'w') as file:
                         file.write(json.dumps(self.best_performance[mc.name], indent=4))
 
         else:  # Regular epoch without testing
@@ -672,7 +681,6 @@ class Rack:
             y_true.extend(list(map(int, y)))
 
             x = self._recursive_todevice(x)
-
 
             for mc in self.model_configs:
                 with torch.no_grad():
