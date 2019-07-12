@@ -339,6 +339,7 @@ class Rack:
                 else:
                     self.writers[mc.name] = [SummaryWriter(log_dir=os.path.join(mc.res_dir, 'FOLD_{}'.format(i + 1)))
                                              for i in range(self.args.kfold)]
+                self.writers[mc.name].add_graph(mc.model)
 
     def _models_to_device(self):
         """Sends the models to the specified device."""
@@ -533,6 +534,10 @@ class Rack:
                     torch.save({'epoch': epoch, 'state_dict': mc.model.state_dict(),
                                 'optimizer': mc.optimizer.state_dict()},
                                os.path.join(mc.res_dir, subdir, file_name))
+
+                if self.args.tensorboard == 1:
+                    for tag, value in test_metrics.items():
+                        self.writers[mc.name].add_scalar(tag,value, global_step = epoch * len(self.train_loader))
 
             if epoch == self.args.epochs:  # Final epoch
 
