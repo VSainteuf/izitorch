@@ -420,6 +420,7 @@ class Rack:
         """
         acc_meter = {}
         loss_meter = {}
+        time_meter = {}
 
         y_true = []
         y_pred = {m.name: [] for m in self.model_configs}
@@ -428,6 +429,7 @@ class Rack:
             mc.model = mc.model.train()
             acc_meter[mc.name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[mc.name] = tnt.meter.AverageValueMeter()
+            time_meter[mc.name] = tnt.meter.AverageValueMeter()
 
         ta = time.time()
 
@@ -443,6 +445,7 @@ class Rack:
 
             for mc in self.model_configs:
 
+                t_start = time.time()
                 outputs[mc.name] = mc.model(x)
                 loss[mc.name] = mc.criterion(outputs[mc.name], y.long())
                 prediction[mc.name] = outputs[mc.name].detach()
@@ -462,6 +465,8 @@ class Rack:
 
                 mc.optimizer.step()
 
+                t_finish = time.time()
+                time_meter[mc.name].add(t_finish - t_start)
                 if self.args.tensorboard == 1:
                     if i > 0:
                         self.writers[mc.name][self.current_fold].add_scalar('train_loss', loss[mc.name],
@@ -479,8 +484,8 @@ class Rack:
                 if (i + 1) % self.args.display_step == 0:
                     tb = time.time()
                     elapsed = tb - ta
-                    print('[{:20.20}] Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'
-                          .format(mc.name, i + 1, self.args.total_step, loss_meter[mc.name].value()[0],
+                    print('\033[1m[{:60.60}]\033[0m'.format(mc.name))
+                    print('Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'.format( i + 1, self.args.total_step, loss_meter[mc.name].value()[0],
                                   acc_meter[mc.name].value()[0],
                                   elapsed))
                     ta = tb
@@ -490,7 +495,8 @@ class Rack:
             miou = mIou(y_true, y_pred[mc.name], self.args.num_classes)
             metrics[mc.name] = {'loss': loss_meter[mc.name].value()[0],
                                 'accuracy': acc_meter[mc.name].value()[0],
-                                'IoU': miou}
+                                'IoU': miou,
+                                'train_step_time' : time_meter[mc.name].value()[0]}
 
         return metrics
 
@@ -538,7 +544,8 @@ class Rack:
 
                 if self.args.tensorboard == 1:
                     for tag, value in test_metrics[mc.name].items():
-                        self.writers[mc.name][self.current_fold].add_scalar(tag,value, global_step = epoch * len(self.train_loader))
+                        self.writers[mc.name][self.current_fold].add_scalar(tag, value,
+                                                                            global_step=epoch * len(self.train_loader))
 
             if epoch == self.args.epochs:  # Final epoch
 
@@ -578,6 +585,7 @@ class Rack:
 
         acc_meter = {}
         loss_meter = {}
+        time_meter = {}
 
         y_true = []
         y_pred = {m.name: [] for m in self.model_configs}
@@ -587,6 +595,7 @@ class Rack:
 
             acc_meter[mc.name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[mc.name] = tnt.meter.AverageValueMeter()
+            time_meter[mc.name] = tnt.meter.AverageValueMeter()
 
         loader = self.validation_loader if self.args.validation else self.test_loader
 
@@ -601,12 +610,16 @@ class Rack:
             prediction = {}
             loss = {}
             for mc in self.model_configs:
+
                 with torch.no_grad():
+                    t_start = time.time()
                     prediction[mc.name] = mc.model(x)
+                    t_finish = time.time()
                     loss[mc.name] = mc.criterion(prediction[mc.name], y)
 
                 acc_meter[mc.name].add(prediction[mc.name], y)
                 loss_meter[mc.name].add(loss[mc.name].item())
+                time_meter[mc.name].add(t_finish- t_start)
 
                 y_p = prediction[mc.name].argmax(dim=1).cpu().numpy()
                 y_pred[mc.name].extend(list(y_p))
@@ -617,8 +630,9 @@ class Rack:
             acc = acc_meter[mc.name].value()[0]
             loss = loss_meter[mc.name].value()[0]
             miou = mIou(y_true, y_pred[mc.name], self.args.num_classes)
+            t = time_meter[mc.name].value()[0]
 
-            test_metrics[mc.name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou}
+            test_metrics[mc.name] = {'test_accuracy': acc, 'test_loss': loss, 'test_IoU': miou, 'inference_time': t}
 
             mode = 'Test' if self.args.validation == 0 else 'Val'
             print('[{}] {} Loss: {:.4f}, Acc : {:.2f}, IoU {:.4f}'.format(mc.name, mode, loss, acc, miou))
@@ -643,7 +657,7 @@ class Rack:
 
                         self.best_performance[mc.name]['epoch'] = self.current_epoch
 
-                test_metrics[mc.name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou}
+                test_metrics[mc.name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou, 'inference_time': t}
 
         if return_y:
             return test_metrics, (y_true, y_pred)
