@@ -427,6 +427,9 @@ class Rack:
 
         for mc in self.model_configs:
             mc.model = mc.model.train()
+
+            if mc.scheduler is not None:
+                mc.scheduler.step()
             acc_meter[mc.name] = tnt.meter.ClassErrorMeter(accuracy=True)
             loss_meter[mc.name] = tnt.meter.AverageValueMeter()
             time_meter[mc.name] = tnt.meter.AverageValueMeter()
@@ -719,11 +722,12 @@ class ModelConfig:
         optimizer (torch.optim otimizer): Instance of optmizer to use for training.
     """
 
-    def __init__(self, name, model=None, criterion=None, optimizer=None):
+    def __init__(self, name, model=None, criterion=None, optimizer=None, scheduler=None):
         self.name = name
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.res_dir = None
 
     def set_model(self, model):
