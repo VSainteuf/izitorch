@@ -25,9 +25,10 @@ import json
 import pickle as pkl
 import os
 import sys
+import pandas as pd
 from collections.abc import Iterable
 
-
+# TODO save best_epoch.json at each epoch to avoid using pandas !
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
 # TODO Parallelise model training in multi-model case (if reasonable)
@@ -237,7 +238,7 @@ class Rack:
             with open(os.path.join(res_dir, 'conf.json'), 'w') as fp:
                 json.dump(conf[mc.name], fp, indent=4)
 
-    def _get_loaders(self):
+    def _get_loaders(self): #TODO can be simplified
         """
         Prepares the sequence of train/(val)/test loaders that will be used. The sequence will be of length one if
         --k_fold is left to 0 (simple training).
@@ -248,79 +249,113 @@ class Rack:
             pm = True
         else:
             pm = False
-
-        print('[DATASET] Splitting dataset')
-
-        indices = list(range(len(self.dataset_train_transforms)))
-
-        if self.args.shuffle:
-            if self.args.rdm_seed is not None:
-                print('[DATASET] Setting random seed to {}'.format(self.args.rdm_seed))
-                np.random.seed(self.args.rdm_seed)
-            np.random.shuffle(indices)
-
-        # TRAIN / TEST SPLIT
-        if self.args.kfold != 0:
-            kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
-            indices_seq = list(kf.split(list(range(len(indices)))))
-            self.ntrain = len(indices_seq[0][0])
-            self.ntest = len(indices_seq[0][1])
-            print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
-
-        else:
-            self.ntrain = int(np.floor(self.args.train_ratio * len(self.dataset_train_transforms)))
-            self.ntest = len(self.dataset_train_transforms) - self.ntrain
-            indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
-
-        print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
-
         loader_seq = []
-        record = []
 
-        # TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
-        for train, test in indices_seq:
-            train_indices = [indices[i] for i in train]
-            test_indices = [indices[i] for i in test]
+        if self.args.resume == 0:
+            print('[DATASET] Splitting dataset')
 
-            if self.args.validation:
-                validation_indices = train_indices[-self.ntest:]
-                train_indices = train_indices[:-self.ntest]
+            indices = list(range(len(self.dataset_train_transforms)))
 
-                record.append((train_indices, validation_indices, test_indices))
+            if self.args.shuffle:
+                if self.args.rdm_seed is not None:
+                    print('[DATASET] Setting random seed to {}'.format(self.args.rdm_seed))
+                    np.random.seed(self.args.rdm_seed)
+                np.random.shuffle(indices)
 
-                train_sampler = data.sampler.SubsetRandomSampler(train_indices)
-                validation_sampler = data.sampler.SubsetRandomSampler(validation_indices)
-                test_sampler = data.sampler.SubsetRandomSampler(test_indices)
-
-                train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
-                                               sampler=train_sampler,
-                                               num_workers=self.args.num_workers, pin_memory=pm)
-                validation_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
-                                                    sampler=validation_sampler,
-                                                    num_workers=self.args.num_workers, pin_memory=pm)
-                test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
-                                              sampler=test_sampler,
-                                              num_workers=self.args.num_workers, pin_memory=pm)
-                loader_seq.append((train_loader, validation_loader, test_loader))
+            # TRAIN / TEST SPLIT
+            if self.args.kfold != 0:
+                kf = model_selection.KFold(n_splits=self.args.kfold, random_state=1, shuffle=False)
+                indices_seq = list(kf.split(list(range(len(indices)))))
+                self.ntrain = len(indices_seq[0][0])
+                self.ntest = len(indices_seq[0][1])
+                print('[TRAINING CONFIGURATION] Preparing {}-fold cross validation'.format(self.args.kfold))
 
             else:
+                self.ntrain = int(np.floor(self.args.train_ratio * len(self.dataset_train_transforms)))
+                self.ntest = len(self.dataset_train_transforms) - self.ntrain
+                indices_seq = [(list(range(self.ntrain)), list(range(self.ntrain, self.ntrain + self.ntest, 1)))]
 
-                record.append((train_indices, test_indices))
+            print('[DATASET] Train: {} samples, Test : {} samples'.format(self.ntrain, self.ntest))
 
-                train_sampler = data.sampler.SubsetRandomSampler(train_indices)
-                test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+            record = []
 
-                train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
-                                               sampler=train_sampler,
-                                               num_workers=self.args.num_workers, pin_memory=pm)
-                test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
-                                              sampler=test_sampler,
-                                              num_workers=self.args.num_workers, pin_memory=pm)
-                loader_seq.append((train_loader, test_loader))
+            # TRAIN / VALIDATION SPLIT AND LOADER PREPARATION
+            for train, test in indices_seq:
+                train_indices = [indices[i] for i in train]
+                test_indices = [indices[i] for i in test]
 
-        pkl.dump(record, open(os.path.join(self.args.res_dir, 'Dataset_split.pkl'), 'wb'))
+                if self.args.validation:
+                    validation_indices = train_indices[-self.ntest:]
+                    train_indices = train_indices[:-self.ntest]
+
+                    record.append((train_indices, validation_indices, test_indices))
+
+                    train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                    validation_sampler = data.sampler.SubsetRandomSampler(validation_indices)
+                    test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+                    train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
+                                                   sampler=train_sampler,
+                                                   num_workers=self.args.num_workers, pin_memory=pm)
+                    validation_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                        sampler=validation_sampler,
+                                                        num_workers=self.args.num_workers, pin_memory=pm)
+                    test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                  sampler=test_sampler,
+                                                  num_workers=self.args.num_workers, pin_memory=pm)
+                    loader_seq.append((train_loader, validation_loader, test_loader))
+
+                else:
+
+                    record.append((train_indices, test_indices))
+
+                    train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                    test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+                    train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
+                                                   sampler=train_sampler,
+                                                   num_workers=self.args.num_workers, pin_memory=pm)
+                    test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                  sampler=test_sampler,
+                                                  num_workers=self.args.num_workers, pin_memory=pm)
+                    loader_seq.append((train_loader, test_loader))
+
+            pkl.dump(record, open(os.path.join(self.args.res_dir, 'Dataset_split.pkl'), 'wb'))
+        else:
+            record = pkl.load(open(os.path.join(self.args.res_dir, 'Dataset_split.pkl'), 'rb'))
+
+            if self.args.validation == 1:
+                for (train_indices, validation_indices, test_indices) in record:
+                    train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                    validation_sampler = data.sampler.SubsetRandomSampler(validation_indices)
+                    test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+                    train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
+                                                   sampler=train_sampler,
+                                                   num_workers=self.args.num_workers, pin_memory=pm)
+                    validation_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                        sampler=validation_sampler,
+                                                        num_workers=self.args.num_workers, pin_memory=pm)
+                    test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                  sampler=test_sampler,
+                                                  num_workers=self.args.num_workers, pin_memory=pm)
+                    loader_seq.append((train_loader, validation_loader, test_loader))
+            else:
+                for (train_indices, test_indices) in record:
+                    train_sampler = data.sampler.SubsetRandomSampler(train_indices)
+                    test_sampler = data.sampler.SubsetRandomSampler(test_indices)
+
+                    train_loader = data.DataLoader(self.dataset_train_transforms, batch_size=self.args.batch_size,
+                                                   sampler=train_sampler,
+                                                   num_workers=self.args.num_workers, pin_memory=pm)
+
+                    test_loader = data.DataLoader(self.dataset_test_transforms, batch_size=self.args.batch_size,
+                                                  sampler=test_sampler,
+                                                  num_workers=self.args.num_workers, pin_memory=pm)
+                    loader_seq.append((train_loader, test_loader))
 
         return loader_seq
+
 
     def _init_trainlogs(self):
         """Prepares the trainlog dictionaries."""
@@ -342,6 +377,27 @@ class Rack:
                 # for w in self.writers[mc.name]:
                 #     w.add_graph([mc.model])
 
+    def _load_trainlogs(self, subdir):
+        self.stats = {}
+        self.best_performance = {}
+
+        for mc in self.model_configs:
+            with open(os.path.join(mc.res_dir, subdir, 'trainlog.json'), 'r') as outfile:
+                self.stats[mc.name] = json.loads(outfile.read())
+            df = pd.DataFrame(self.stats[mc.name]).transpose()
+            best_epoch = df['val_'+self.args.metric_best].argmax()
+            self.best_performance[mc.name] = {'epoch': int(best_epoch), 'IoU': df.loc[best_epoch]['val_IoU'],
+                                              'acc': df.loc[best_epoch]['val_accuracy'], 'loss': sys.float_info.max}
+        if self.args.tensorboard == 1:
+            self.writers = {}
+            for mc in self.model_configs:
+                if self.args.kfold == 0:
+                    self.writers[mc.name] = [SummaryWriter(log_dir=mc.res_dir)]
+                else:
+                    self.writers[mc.name] = [SummaryWriter(log_dir=os.path.join(mc.res_dir, 'FOLD_{}'.format(i + 1)))
+                                             for i in range(self.args.kfold)]
+                # for w in self.writers[mc.name]:
+                #     w.add_graph([mc.model])
     def _models_to_device(self):
         """Sends the models to the specified device."""
         for mc in self.model_configs:
@@ -355,6 +411,35 @@ class Rack:
 
         for mc in self.model_configs:
             mc.model = mc.model.apply(weight_init)
+
+    def _load_state_dicts(self, subdir):
+        for mc in self.model_configs:
+            d = torch.load(os.path.join(mc.res_dir, subdir, 'model.pth.tar'), map_location=self.device)
+            mc.model.load_state_dict(d['state_dict'])
+            mc.optimizer.load_state_dict(d['optimizer'])
+            for state in mc.optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(self.device)
+
+    def _get_cur_epf(self):
+        if self.args.kfold == 0:
+            f = 0
+            l = ['']
+        else:
+            dir = os.path.join(self.args.res_dir, self.model_configs[0].res_dir)
+            l = [n for n in os.listdir(dir) if 'FOLD' in n]
+            for f, sd in enumerate(l):
+                if 'trainlog.json' in os.listdir(os.path.join(dir,sd)):
+                    pass
+                else:
+                    break
+
+        with open(os.path.join(dir, l[f], 'trainlog.json')) as file:
+            d = json.loads(file.read())
+        e = max(list(map(int,list(d.keys()))))
+
+        return f, e
 
     ####### Methods for execution
 
@@ -372,9 +457,14 @@ class Rack:
         loader_seq = self._get_loaders()
         nfold = len(loader_seq)
 
-        for i, loaders in enumerate(loader_seq):
+        if self.args.resume == 1:
+            start_fold, start_epoch = self._get_cur_epf()
+        else:
+            start_fold, start_epoch = 0, 0
 
-            self.current_fold = i
+        for i, loaders in enumerate(loader_seq[start_fold:]):
+
+            self.current_fold = i + start_fold
             if self.args.validation:
                 self.train_loader, self.validation_loader, self.test_loader = loaders
             else:
@@ -384,18 +474,23 @@ class Rack:
                 print('[TRAINING CONFIGURATION] Starting single training ')
                 subdir = ''
             else:
-                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(i + 1, nfold))
-                subdir = 'FOLD_{}'.format(i + 1)
+                print('[TRAINING CONFIGURATION] Starting training for fold {}/{}'.format(self.current_fold + 1, nfold))
+                subdir = 'FOLD_{}'.format(self.current_fold + 1)
 
             self.args.total_step = len(self.train_loader)
 
-            self._init_trainlogs()
+            if self.args.resume == 1 and i == 0:
+                self._load_trainlogs(subdir)
+                self._load_state_dicts(subdir)
+            else:
+                self._init_trainlogs()
+                self._init_weights()
 
             self._models_to_device()
 
-            self._init_weights()
+            s = start_epoch if i == 0 else 0
 
-            for self.current_epoch in range(1, self.args.epochs + 1):
+            for self.current_epoch in range(s, self.args.epochs + 1):
                 t0 = time.time()
 
                 train_metrics = self._train_epoch()
@@ -488,9 +583,13 @@ class Rack:
                     tb = time.time()
                     elapsed = tb - ta
                     print('\033[1m[{:60.60}]\033[0m'.format(mc.name))
-                    print('Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'.format( i + 1, self.args.total_step, loss_meter[mc.name].value()[0],
-                                  acc_meter[mc.name].value()[0],
-                                  elapsed))
+                    print(
+                        'Step [{}/{}], Loss: {:.4f}, Acc : {:.2f}, Duration:{:.4f}'.format(i + 1, self.args.total_step,
+                                                                                           loss_meter[mc.name].value()[
+                                                                                               0],
+                                                                                           acc_meter[mc.name].value()[
+                                                                                               0],
+                                                                                           elapsed))
                     ta = tb
 
         metrics = {}
@@ -499,7 +598,7 @@ class Rack:
             metrics[mc.name] = {'loss': loss_meter[mc.name].value()[0],
                                 'accuracy': acc_meter[mc.name].value()[0],
                                 'IoU': miou,
-                                'train_step_time' : time_meter[mc.name].value()[0]}
+                                'train_step_time': time_meter[mc.name].value()[0]}
 
         return metrics
 
@@ -613,7 +712,6 @@ class Rack:
             prediction = {}
             loss = {}
             for mc in self.model_configs:
-
                 with torch.no_grad():
                     t_start = time.time()
                     prediction[mc.name] = mc.model(x)
@@ -622,7 +720,7 @@ class Rack:
 
                 acc_meter[mc.name].add(prediction[mc.name], y)
                 loss_meter[mc.name].add(loss[mc.name].item())
-                time_meter[mc.name].add(t_finish- t_start)
+                time_meter[mc.name].add(t_finish - t_start)
 
                 y_p = prediction[mc.name].argmax(dim=1).cpu().numpy()
                 y_pred[mc.name].extend(list(y_p))

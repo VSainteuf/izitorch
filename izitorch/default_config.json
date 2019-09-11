@@ -9,6 +9,11 @@
     "type": "str",
     "help": "output folder for checkpoints"
   },
+  "resume": {
+    "default": 0,
+    "type": "int",
+    "help": "If one will resume previously started training"
+  },
   "rdm_seed": {
     "default": null,
     "type": "int",
