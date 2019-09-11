@@ -434,11 +434,11 @@ class Rack:
                     pass
                 else:
                     break
-
+        f = f-1
         with open(os.path.join(dir, l[f], 'trainlog.json')) as file:
             d = json.loads(file.read())
         e = max(list(map(int,list(d.keys()))))
-
+        print('RESUMING Training at Fold {} and epoch {}'.format(f+1,e))
         return f, e
 
     ####### Methods for execution
