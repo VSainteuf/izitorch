@@ -429,16 +429,19 @@ class Rack:
         else:
             dir = os.path.join(self.args.res_dir, self.model_configs[0].res_dir)
             l = [n for n in os.listdir(dir) if 'FOLD' in n]
+            l = np.sort(l)
             for f, sd in enumerate(l):
                 if 'trainlog.json' in os.listdir(os.path.join(dir,sd)):
                     pass
                 else:
                     break
-        f = f-1
         with open(os.path.join(dir, l[f], 'trainlog.json')) as file:
             d = json.loads(file.read())
+
         e = max(list(map(int,list(d.keys()))))
+
         print('RESUMING Training at Fold {} and epoch {}'.format(f+1,e))
+
         return f, e
 
     ####### Methods for execution
