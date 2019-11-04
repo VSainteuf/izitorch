@@ -17,7 +17,12 @@
   "rdm_seed": {
     "default": null,
     "type": "int",
-    "help": "random seed for dataset split and weight initialization (optional)"
+    "help": "random seed for dataset split (optional)"
+  },
+    "rdm_seed_train": {
+    "default": null,
+    "type": "int",
+    "help": "random seed for weight initialization (optional)"
   },
   "dataset": {
     "default": "",

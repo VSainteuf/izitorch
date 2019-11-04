@@ -406,8 +406,9 @@ class Rack:
     def _init_weights(self):
         """Initializes the weights of the rack's models."""
 
-        if self.args.rdm_seed is not None:
-            torch.manual_seed(self.args.rdm_seed)
+        if self.args.rdm_seed_train is not None:
+            torch.manual_seed(self.args.rdm_seed_train)
+            np.random.seed(self.args.rdm_seed_train)
 
         for mc in self.model_configs:
             mc.model = mc.model.apply(weight_init)
