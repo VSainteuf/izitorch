@@ -9,10 +9,20 @@
     "type": "str",
     "help": "output folder for checkpoints"
   },
+  "resume": {
+    "default": 0,
+    "type": "int",
+    "help": "If one will resume previously started training"
+  },
   "rdm_seed": {
     "default": null,
     "type": "int",
-    "help": "random seed for dataset split and weight initialization (optional)"
+    "help": "random seed for dataset split (optional)"
+  },
+    "rdm_seed_train": {
+    "default": null,
+    "type": "int",
+    "help": "random seed for weight initialization (optional)"
   },
   "dataset": {
     "default": "",
