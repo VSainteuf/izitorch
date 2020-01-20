@@ -28,6 +28,7 @@ import sys
 import pandas as pd
 from collections.abc import Iterable
 
+
 # TODO save best_epoch.json at each epoch to avoid using pandas !
 # TODO Add resume training feature
 # TODO Add a stop at convergence feature
@@ -238,7 +239,7 @@ class Rack:
             with open(os.path.join(res_dir, 'conf.json'), 'w') as fp:
                 json.dump(conf[mc.name], fp, indent=4)
 
-    def _get_loaders(self): #TODO can be simplified
+    def _get_loaders(self):  # TODO can be simplified
         """
         Prepares the sequence of train/(val)/test loaders that will be used. The sequence will be of length one if
         --k_fold is left to 0 (simple training).
@@ -356,7 +357,6 @@ class Rack:
 
         return loader_seq
 
-
     def _init_trainlogs(self):
         """Prepares the trainlog dictionaries."""
         self.stats = {}
@@ -385,7 +385,7 @@ class Rack:
             with open(os.path.join(mc.res_dir, subdir, 'trainlog.json'), 'r') as outfile:
                 self.stats[mc.name] = json.loads(outfile.read())
             df = pd.DataFrame(self.stats[mc.name]).transpose()
-            best_epoch = df['val_'+self.args.metric_best].argmax()
+            best_epoch = df['val_' + self.args.metric_best].argmax()
             self.best_performance[mc.name] = {'epoch': int(best_epoch), 'IoU': df.loc[best_epoch]['val_IoU'],
                                               'acc': df.loc[best_epoch]['val_accuracy'], 'loss': sys.float_info.max}
         if self.args.tensorboard == 1:
@@ -398,6 +398,7 @@ class Rack:
                                              for i in range(self.args.kfold)]
                 # for w in self.writers[mc.name]:
                 #     w.add_graph([mc.model])
+
     def _models_to_device(self):
         """Sends the models to the specified device."""
         for mc in self.model_configs:
@@ -440,8 +441,8 @@ class Rack:
 
                 if e != self.args.epochs:
                     break
-            e+=1
-        print('RESUMING Training at Fold {} and epoch {}'.format(f+1,e))
+            e += 1
+        print('RESUMING Training at Fold {} and epoch {}'.format(f + 1, e))
 
         return f, e
 
@@ -742,7 +743,7 @@ class Rack:
             mode = 'Test' if self.args.validation == 0 else 'Val'
             print('[{}] {} Loss: {:.4f}, Acc : {:.2f}, IoU {:.4f}'.format(mc.name, mode, loss, acc, miou))
 
-            if self.args.validation:
+            if self.args.validation or self.args.save_best:
                 metric = [m for m in test_metrics[mc.name].keys() if self.args.metric_best in m][0]
 
                 if self.args.metric_best == 'loss':
@@ -761,7 +762,7 @@ class Rack:
                         self.best_performance[mc.name]['loss'] = test_metrics[mc.name]['test_loss']
 
                         self.best_performance[mc.name]['epoch'] = self.current_epoch
-
+            if self.args.validation:
                 test_metrics[mc.name] = {'val_accuracy': acc, 'val_loss': loss, 'val_IoU': miou, 'inference_time': t}
 
         if return_y:
